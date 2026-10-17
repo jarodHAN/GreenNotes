@@ -5,6 +5,9 @@
 不上传、不同步、不登录、不联网。所有笔记存在你自己电脑上的一个 SQLite 文件里，
 断网、关机、卸载重装都不会丢；把数据目录拷走就是完整迁移。
 
+> **EN** · A local-first, Evernote-style note app for macOS — offline, no account, no sync.
+> Full English README: **[README.en.md](README.en.md)**
+
 <p>
   <img alt="platform" src="https://img.shields.io/badge/macOS-11%2B-000000?logo=apple&logoColor=white">
   <img alt="arch" src="https://img.shields.io/badge/universal-x86__64%20%7C%20arm64-00a82d">
