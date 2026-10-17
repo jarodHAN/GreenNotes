@@ -77,7 +77,15 @@ cp "$HERE/Info.plist" "$CONTENTS/Info.plist"
 if [ -f "$HERE/AppIcon.png" ]; then
   # 临时 iconset 放 /tmp 且**不删**：这里原来 rm -rf 一个含 590 个 png 的目录，
   # 被 safe-delete 拦截 → set -e 中断 → 后面内嵌运行时和签名全被跳过。
-  ICONSET="$(mktemp -d /tmp/localnotes-iconset.XXXXXX)"
+  #
+  # 两个必须注意的点（1.3 首次全新构建时踩到，结果 Dock 里是通用图标）：
+  #   1. iconutil 要求目录名**必须以 .iconset 结尾**，否则报 "Invalid Iconset."；
+  #      以前是 mktemp -d /tmp/xxx-iconset.XXXXXX，没有后缀。
+  #   2. 以前那句 `2>/dev/null || true` 把错误吞了，于是「没生成 icns」静默通过；
+  #      现在保留错误输出，并交给末尾自检兜底。
+  ICONSET_ROOT="$(mktemp -d /tmp/greennotes-icon.XXXXXX)"
+  ICONSET="$ICONSET_ROOT/AppIcon.iconset"
+  mkdir -p "$ICONSET"
   for s in 16 32 128 256 512; do
     /usr/bin/sips -z $s $s "$HERE/AppIcon.png" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null 2>&1
   done
@@ -86,7 +94,7 @@ if [ -f "$HERE/AppIcon.png" ]; then
   /usr/bin/sips -z 256 256 "$HERE/AppIcon.png" --out "$ICONSET/icon_128x128@2x.png" >/dev/null 2>&1
   /usr/bin/sips -z 512 512 "$HERE/AppIcon.png" --out "$ICONSET/icon_256x256@2x.png" >/dev/null 2>&1
   /usr/bin/sips -z 1024 1024 "$HERE/AppIcon.png" --out "$ICONSET/icon_512x512@2x.png" >/dev/null 2>&1
-  /usr/bin/iconutil -c icns "$ICONSET" -o "$RES/AppIcon.icns" 2>/dev/null || true
+  /usr/bin/iconutil -c icns "$ICONSET" -o "$RES/AppIcon.icns" || echo "  ✗ 生成 AppIcon.icns 失败（见上面的 iconutil 报错）"
 fi
 
 # 6) 内嵌 Python 运行时（通用二进制、已裁剪到 ~35MB）
@@ -115,6 +123,7 @@ echo "→ 自签名…"
 echo "→ 收尾自检…"
 FAIL=0
 [ -x "$RES/python/bin/python3" ]      || { echo "  ✗ 缺少内嵌 Python 运行时"; FAIL=1; }
+[ -f "$RES/AppIcon.icns" ]            || { echo "  ✗ 缺少 AppIcon.icns（Dock 里会变成通用图标）"; FAIL=1; }
 [ -d "$RES/app/importers" ]           || { echo "  ✗ 缺少 importers 包"; FAIL=1; }
 [ -f "$RES/app/static/index.html" ]   || { echo "  ✗ 缺少前端页面"; FAIL=1; }
 if [ -e "$RES/app/notes.db" ] || [ -d "$RES/app/assets" ]; then

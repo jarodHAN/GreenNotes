@@ -44,7 +44,7 @@ xattr -dr com.apple.quarantine /Applications/GreenNotes.app
 
 ```bash
 shasum -a 256 GreenNotes-1.3.dmg
-# 5431b4642c462dc05d192924a0ab95f1b353529afc2bc9351bbae5989b43ea50
+# 2ec1c28d634b34eab96cb6d3283b0179a98ba2417f5c56b1c4020241d357eb54
 ```
 
 > **1.3 起应用改名为 `GreenNotes.app`**（1.2 及以前叫 `LocalNotes.app`）。升级时旧数据会自动从

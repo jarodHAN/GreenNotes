@@ -44,7 +44,7 @@ Verify the download:
 
 ```bash
 shasum -a 256 GreenNotes-1.3.dmg
-# 5431b4642c462dc05d192924a0ab95f1b353529afc2bc9351bbae5989b43ea50
+# 2ec1c28d634b34eab96cb6d3283b0179a98ba2417f5c56b1c4020241d357eb54
 ```
 
 > **As of 1.3 the bundle is named `GreenNotes.app`** (it was `LocalNotes.app` through 1.2).

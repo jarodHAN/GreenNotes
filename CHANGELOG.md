@@ -23,7 +23,10 @@
 
 - `build.sh` 不再用 `rm -rf` 清理内嵌运行时（500+ 文件会触发批量删除保护，导致脚本中途退出、
   产出一个没签名的包），改为先 `mv` 到 `/tmp` 再覆盖拷贝
-- README 补上收尾自检的完整七条门禁
+- **图标丢失**：`iconutil` 要求目录名以 `.iconset` 结尾，而脚本用的是 `mktemp -d .../xxx-iconset.XXXXXX`，
+  加上 `2>/dev/null || true` 把错误吞掉，导致全新构建时 `AppIcon.icns` 根本没生成、Dock 里显示通用图标。
+  已改成 `…/AppIcon.iconset` 子目录，并把「包内有 AppIcon.icns」加进收尾自检
+- README 补上收尾自检的完整门禁条目
 
 ## 1.2 — 2026-10-17
 
