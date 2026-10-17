@@ -186,7 +186,9 @@ GreenNotes/
 └── docs/images/
 ```
 
-Design notes and the reasoning behind the stack: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Design notes and the reasoning behind the stack: [`docs/ARCHITECTURE.en.md`](docs/ARCHITECTURE.en.md)
+([中文](docs/ARCHITECTURE.md)) — why no Electron/Tauri, the FTS5 trigram trade-off, the five native
+hooks the shell has to implement, and the two script-level traps that produce silently broken builds.
 
 ---
 

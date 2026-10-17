@@ -190,6 +190,9 @@ GreenNotes/
 └── docs/images/             # 截图
 ```
 
+设计取舍与构建链细节见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)（[English](docs/ARCHITECTURE.en.md)）：
+为什么不用 Electron/Tauri、FTS5 trigram 的取舍、外壳必须手接的五处原生口、以及两条会静默产出坏包的脚本坑。
+
 ---
 
 ## 本地 API 一览
