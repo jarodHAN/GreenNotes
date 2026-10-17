@@ -8,6 +8,7 @@
 启动: python3 server.py  (默认 http://127.0.0.1:8731)
 """
 import base64
+import hashlib
 import json
 import os
 import re
@@ -16,7 +17,7 @@ import sys
 import time
 import html as _html
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 # 让 importers 在两种布局下都能被找到：
@@ -25,9 +26,11 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(ROOT))
 import importers
-from importers.common import persist_notes, ensure_schema
+from importers.common import (persist_notes, ensure_schema, md_to_html, mime_for_ext,
+                              safe_name, sort_time_sql)
 from sanitize import sanitize_html
-from exporter import note_markdown, note_enex, notebook_markdown, notebook_enex
+from exporter import (note_markdown, note_enex, notebook_markdown, notebook_enex,
+                      html_to_markdown)
 # 数据目录：优先用环境变量（打包 App 时由外壳注入），否则落到用户支持目录，
 # 这样 App 包被移动也不会丢数据（见 macos-native-webapp-package 坑 5）。
 DATA_DIR = os.environ.get("LOCALNOTES_DATA") or os.path.join(
@@ -44,8 +47,19 @@ os.makedirs(ASSETS, exist_ok=True)
 
 _MIME = {
     "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif",
-    "webp": "image/webp", "pdf": "application/pdf", "txt": "text/plain",
-    "html": "text/html", "mp3": "audio/mpeg", "wav": "audio/wav", "mp4": "video/mp4",
+    "webp": "image/webp", "bmp": "image/bmp", "svg": "image/svg+xml", "heic": "image/heic",
+    "pdf": "application/pdf", "txt": "text/plain", "md": "text/markdown",
+    "csv": "text/csv", "json": "application/json", "html": "text/html",
+    "mp3": "audio/mpeg", "wav": "audio/wav", "m4a": "audio/mp4",
+    "mp4": "video/mp4", "mov": "video/quicktime",
+    "zip": "application/zip", "gz": "application/gzip",
+    "doc": "application/msword",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xls": "application/vnd.ms-excel",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "ppt": "application/vnd.ms-powerpoint",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "rtf": "application/rtf",
 }
 
 def _con():
@@ -60,15 +74,23 @@ def list_notebooks():
     con.close()
     return [{"id": r[0], "name": r[1], "count": r[2]} for r in rows]
 
+def _sort_expr(p=""):
+    return sort_time_sql(p)
+
+
 def list_notes(notebook_id=None, tag=None):
     con = _con(); cur = con.cursor()
     cols = "SELECT id,notebook_id,title,created,updated FROM notes"
+    order = _sort_expr() + " DESC, id DESC"
     if notebook_id:
-        notes = cur.execute(cols + " WHERE notebook_id=? ORDER BY updated DESC, id DESC", (notebook_id,)).fetchall()
+        notes = cur.execute(cols + " WHERE notebook_id=? ORDER BY " + order, (notebook_id,)).fetchall()
     elif tag:
-        notes = cur.execute("SELECT n.id,n.notebook_id,n.title,n.created,n.updated FROM notes n JOIN tags t ON t.note_id=n.id WHERE t.name=? ORDER BY n.updated DESC, n.id DESC", (tag,)).fetchall()
+        notes = cur.execute(
+            "SELECT n.id,n.notebook_id,n.title,n.created,n.updated FROM notes n "
+            "JOIN tags t ON t.note_id=n.id WHERE t.name=? ORDER BY " + _sort_expr("n.") + " DESC, n.id DESC",
+            (tag,)).fetchall()
     else:
-        notes = cur.execute(cols + " ORDER BY updated DESC, id DESC").fetchall()
+        notes = cur.execute(cols + " ORDER BY " + order).fetchall()
     out = []
     for nid, nbid, title, created, updated in notes:
         tags = [t[0] for t in cur.execute("SELECT name FROM tags WHERE note_id=?", (nid,)).fetchall()]
@@ -107,7 +129,7 @@ def search(q):
                 try:
                     cur.execute("SELECT n.id,n.title FROM notes n "
                                 "JOIN notes_fts f ON n.id=f.rowid "
-                                "WHERE notes_fts MATCH ? ORDER BY n.updated DESC", (q2,))
+                                "WHERE notes_fts MATCH ? ORDER BY " + _sort_expr("n.") + " DESC", (q2,))
                     rows = cur.fetchall()
                 except sqlite3.OperationalError:
                     rows = []
@@ -118,7 +140,7 @@ def search(q):
             like = f"%{esc}%"
             rows = cur.execute(
                 "SELECT id,title FROM notes WHERE title LIKE ? ESCAPE '\\' "
-                "OR content_text LIKE ? ESCAPE '\\' ORDER BY updated DESC",
+                "OR content_text LIKE ? ESCAPE '\\' ORDER BY " + _sort_expr() + " DESC",
                 (like, like)).fetchall()
     con.close()
     seen = set(); out = []
@@ -203,9 +225,50 @@ def do_import_path(path, notebook_name=None):
 
 def strip_text(html_str):
     t = re.sub(r"<br\s*/?>", "\n", html_str or "")
-    t = re.sub(r"</(p|div|li|h[1-6])>", "\n", t)
+    t = re.sub(r"</(p|div|li|h[1-6]|tr|td|th)>", "\n", t)
     t = re.sub(r"<[^>]+>", "", t)
     return _html.unescape(t).strip()
+
+
+MAX_ATTACH = 25 * 1024 * 1024      # 单个附件上限 25MB（base64 后约 33MB）
+
+
+def attach_file(nid, filename, data):
+    """把拖入的文件存进 assets/ 并登记到 resources，返回给前端插入用。
+    同一篇笔记里内容相同的文件只存一份（按 md5 去重）。"""
+    if not data:
+        return {"error": "文件是空的"}, 400
+    if len(data) > MAX_ATTACH:
+        return {"error": f"文件超过 {MAX_ATTACH // 1024 // 1024}MB 上限"}, 413
+    con = _con(); cur = con.cursor()
+    if not cur.execute("SELECT id FROM notes WHERE id=?", (nid,)).fetchone():
+        con.close()
+        return {"error": "笔记不存在"}, 404
+    h = hashlib.md5(data).hexdigest()
+    dup = cur.execute(
+        "SELECT filename,local_path,mime,size FROM resources WHERE note_id=? AND hash=?",
+        (nid, h)).fetchone()
+    if dup:
+        con.close()
+        fn = os.path.basename(dup[1] or dup[0])
+        return {"ok": True, "filename": fn, "name": dup[0], "url": "assets/" + fn,
+                "mime": dup[2] or "", "size": dup[3] or len(data),
+                "image": (dup[2] or "").startswith("image/"), "dedup": True}, 200
+
+    orig = os.path.basename((filename or "附件").replace("\\", "/"))
+    stem, ext = os.path.splitext(orig)
+    ext = re.sub(r"[^A-Za-z0-9]", "", ext.lstrip("."))[:10].lower()
+    base = safe_name(stem, "file", 1)[:60]
+    fn = f"{base}-{h[:8]}.{ext}" if ext else f"{base}-{h[:8]}"
+    with open(os.path.join(ASSETS, fn), "wb") as f:
+        f.write(data)
+    mime = mime_for_ext(ext) or "application/octet-stream"
+    cur.execute(
+        "INSERT INTO resources(note_id,filename,mime,ext,hash,size,local_path) VALUES(?,?,?,?,?,?,?)",
+        (nid, orig, mime, ext, h, len(data), os.path.join("assets", fn)))
+    con.commit(); con.close()
+    return {"ok": True, "filename": fn, "name": orig, "url": "assets/" + fn,
+            "mime": mime, "size": len(data), "image": mime.startswith("image/")}, 200
 
 def create_notebook(name):
     con = _con(); cur = con.cursor()
@@ -369,7 +432,9 @@ class Handler(BaseHTTPRequestHandler):
             con = _con(); n = con.execute("SELECT COUNT(*) FROM notebooks").fetchone()[0]; con.close()
             self._send(200, {"ok": True, "port": PORT, "notebooks": n})
         elif path.startswith("/assets/"):
-            self._send_file(os.path.join(ASSETS, os.path.basename(path)))
+            # 附件名可能带中文，浏览器会把 URL 百分号编码，这里要先解码再取 basename
+            name = os.path.basename(unquote(path))
+            self._send_file(os.path.join(ASSETS, name))
         else:
             self._send(404, {"error": "not found"})
 
@@ -398,6 +463,31 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, {"error": "file or dir not found"}); return
             res = do_import_path(fp, payload.get("notebook"))
             self._send(200, res)
+        elif p.path == "/api/convert":
+            # 编辑器两种模式之间互转：HTML ↔ Markdown（Markdown 模式实时预览的保存路径）
+            src = (payload.get("from") or "").strip().lower()
+            text = payload.get("text") or ""
+            if src == "html":
+                self._send(200, {"ok": True, "text": html_to_markdown(text)})
+            elif src == "md":
+                self._send(200, {"ok": True, "text": md_to_html(text)})
+            else:
+                self._send(400, {"error": "from 必须是 html 或 md"})
+        elif p.path.startswith("/api/note/") and p.path.endswith("/attach"):
+            # 拖入/粘贴附件：POST /api/note/<id>/attach  {filename, data(base64)}
+            try:
+                nid = int(p.path.split("/")[3])
+            except (IndexError, ValueError):
+                self._send(400, {"error": "bad note id"}); return
+            b64 = payload.get("data")
+            if not b64:
+                self._send(400, {"error": "缺少文件内容"}); return
+            try:
+                blob = base64.b64decode(b64)
+            except Exception:
+                self._send(400, {"error": "base64 解析失败"}); return
+            res, code = attach_file(nid, payload.get("filename"), blob)
+            self._send(code, res)
         elif p.path == "/api/notebook":
             nid = create_notebook(payload.get("name", "未命名笔记本"))
             self._send(200, {"id": nid})

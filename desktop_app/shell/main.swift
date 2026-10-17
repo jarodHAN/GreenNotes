@@ -267,6 +267,36 @@ final class ExportHandler: NSObject, WKScriptMessageHandler {
     }
 }
 
+// ---------- 附件：交给系统默认程序打开 ----------
+// 正文里的附件卡片是 assets/xxx.pdf 这样的相对地址。WKWebView 里直接点链接会把
+// 整个界面导航到那个文件上（且回不来），所以走 messageHandlers.openFile，
+// 由原生用 NSWorkspace 打开 —— 行为和 Finder 里双击一致。
+final class OpenFileHandler: NSObject, WKScriptMessageHandler {
+    func userContentController(_ ucc: WKUserContentController,
+                               didReceive message: WKScriptMessage) {
+        guard message.name == "openFile" else { return }
+        guard let body = message.body as? [String: Any],
+              let rel = body["path"] as? String else { return }
+        let name = (rel as NSString).lastPathComponent
+        // 只允许 assets 目录下的纯文件名，挡掉 ../ 之类的路径穿越
+        guard !name.isEmpty, !name.hasPrefix("."), !name.contains("/") else {
+            logLine("打开附件被拒绝：\(rel)")
+            return
+        }
+        let url = URL(fileURLWithPath: dataDir)
+            .appendingPathComponent("assets")
+            .appendingPathComponent(name)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            logLine("附件不存在：\(url.path)")
+            return
+        }
+        DispatchQueue.main.async {
+            NSWorkspace.shared.open(url)
+            logLine("已打开附件 \(url.path)")
+        }
+    }
+}
+
 // ---------- 窗口 ----------
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
@@ -287,6 +317,9 @@ webView.uiDelegate = uiDelegate
 let exportHandler = ExportHandler()
 exportHandler.webView = webView
 webView.configuration.userContentController.add(exportHandler, name: "saveExport")
+// 附件打开通道（网页 → 原生 NSWorkspace）
+let openFileHandler = OpenFileHandler()
+webView.configuration.userContentController.add(openFileHandler, name: "openFile")
 win.contentView?.addSubview(webView)
 // 让网页视图直接成为第一响应者，这样窗口一打开 ⌘A/⌘C/⌘V 就有接收方
 win.makeFirstResponder(webView)
@@ -419,6 +452,13 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                 "window.webkit.messageHandlers.saveExport.postMessage({url:'https://example.invalid/x.md', filename:'probe.md'}); 1",
                 completionHandler: nil)
         }
+    }
+    // 自检附件通道：只探测 handler 是否注册（不真的打开文件）
+    webView.evaluateJavaScript(
+        "!!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openFile)")
+    { value, _ in
+        let ok = (value as? Bool) ?? ((value as? NSNumber)?.boolValue ?? false)
+        logLine("附件通道 openFile=\(ok)")
     }
 }
 

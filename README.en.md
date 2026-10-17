@@ -10,7 +10,7 @@ your whole notebook moves with you.
   <img alt="platform" src="https://img.shields.io/badge/macOS-11%2B-000000?logo=apple&logoColor=white">
   <img alt="arch" src="https://img.shields.io/badge/universal-x86__64%20%7C%20arm64-00a82d">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-00a82d">
-  <img alt="version" src="https://img.shields.io/badge/version-1.1-00a82d">
+  <img alt="version" src="https://img.shields.io/badge/version-1.2-00a82d">
   <img alt="deps" src="https://img.shields.io/badge/dependencies-none-00a82d">
 </p>
 
@@ -22,9 +22,9 @@ your whole notebook moves with you.
 
 ## Download & install
 
-**[⬇ Download LocalNotes-1.1.dmg](https://github.com/jarodHAN/GreenNotes/releases/latest)** (18 MB, runtime included)
+**[⬇ Download LocalNotes-1.2.dmg](https://github.com/jarodHAN/GreenNotes/releases/latest)** (18 MB, runtime included)
 
-Also committed in the repo: [`dist/LocalNotes-1.1.dmg`](dist/LocalNotes-1.1.dmg)
+Also committed in the repo: [`dist/LocalNotes-1.2.dmg`](dist/LocalNotes-1.2.dmg)
 
 1. Open the dmg and drag `LocalNotes.app` into `Applications`
 2. **First launch:** in Applications, **right-click LocalNotes → Open → Open** again.
@@ -43,8 +43,8 @@ Python 3.13.16 runtime ships inside the bundle.
 Verify the download:
 
 ```bash
-shasum -a 256 LocalNotes-1.1.dmg
-# bdf03426958c2679d199890771c540f6bcb49a9fb852ef828cbc889e4ae8bdca
+shasum -a 256 LocalNotes-1.2.dmg
+# 4f44efe8b2d3e13c8e1a15d13c761bb11f006e25b3b77955ba015e69bc1eebc3
 ```
 
 > The bundle is named `LocalNotes.app` (early codename); the project is GreenNotes, named after the
@@ -59,11 +59,48 @@ shasum -a 256 LocalNotes-1.1.dmg
 | **Notebooks** | Create, delete, **rename by double-clicking the name**, via the hover pencil `✎`, or the context menu |
 | **Notes** | Create, edit, save (⌘S), delete; separate title and body; list sorted by last update |
 | **Rich text** | Bold / italic / underline / monospace / bullet list / numbered list / quote / code / clear formatting |
+| **Markdown** | Switch the toolbar to **Markdown** for a source + live-preview split view; both modes edit the same note (HTML is what gets stored) |
+| **Tables** | Insert a 2×2 – 5×4 table, type straight into cells, Tab moves on; exported Markdown becomes a GFM table |
+| **Attachments** | Drop a file into the body: images render inline, PDF/Office/zip become attachment cards that open in the default app |
 | **Full-text search** | Title + body, Chinese substring search works down to two characters (FTS5 `trigram` with a `LIKE` fallback) |
 | **Import** | Evernote `.enex` (images included), Yinxiang/Youdao HTML exports, Markdown, plain text, Obsidian vaults, whole folders (recursive) |
 | **Export** | One note or a whole notebook → Markdown / ENEX; UTF-8 filenames; saves pending edits first |
 | **Drag to file** | Drag a note onto any notebook in the left pane; the target highlights |
 | **Tags** | Preserved on import, shown in the editor |
+
+### Markdown live preview
+
+![Markdown split view](docs/images/markdown.png)
+
+**Rich text** and **Markdown** in the toolbar are two views of one note — switch back and forth
+without losing anything:
+
+- Going to Markdown converts the current body with the server-side `html_to_markdown`
+- The right pane is rendered entirely client-side (GFM subset: headings, lists, quotes, code blocks,
+  tables, images, strikethrough) and updates as you type — no network
+- Saving (⌘S) or switching back runs the source through `md_to_html`; **the database only ever holds
+  HTML**, so search, ENEX export and every importer keep working unchanged
+
+### Tables
+
+**▦ 表格** in the toolbar inserts a table. Type directly into cells in rich-text mode, Tab to move on;
+in Markdown mode you get a `| col 1 | col 2 |` template. Header styling, zebra rows and alignment
+(`:-`, `:-:`, `-:`) are supported, Markdown export produces a standard GFM table, and ENEX gets a real
+`<table>`.
+
+### Attachments
+
+Drop files from Finder anywhere in the body:
+
+| Type | What happens |
+|---|---|
+| Images (png / jpg / gif / webp…) | Inserted inline and displayed |
+| Anything else (pdf / docx / xlsx / zip…) | Becomes a `📎 name + size` attachment card |
+| Screenshot on the clipboard | ⌘V uploads and inserts it the same way |
+
+Files land in `assets/` inside the data folder; identical content in the same note is stored once
+(MD5 de-duplication). Clicking a card does not navigate the window — it hands the file to the system
+via a native `NSWorkspace` call. Limit: 25 MB per file.
 
 ### Export
 
@@ -182,7 +219,7 @@ GreenNotes/
 │   ├── Info.plist
 │   ├── build.sh  make_dmg.sh  build_runtime.py
 │   ├── make_icon.py  icon_lib.py  icon_variants.py  AppIcon.png
-├── dist/LocalNotes-1.1.dmg
+├── dist/LocalNotes-1.2.dmg
 └── docs/images/
 ```
 
@@ -209,6 +246,8 @@ The window is a WKWebView talking to a loopback HTTP server, so everything is sc
 | POST | `/api/note/<id>` / `/api/notebook/<id>` | update / rename |
 | POST | `/api/note/<id>/move` | move note to another notebook |
 | POST | `/api/import` / `/api/import_path` | import upload / local path |
+| POST | `/api/convert` | HTML ⇄ Markdown `{from:'html'\|'md', text}` |
+| POST | `/api/note/<id>/attach` | upload an attachment `{filename, data(base64)}` |
 | DELETE | `/api/note/<id>` / `/api/notebook/<id>[?force=1]` | delete |
 
 ---
@@ -219,12 +258,16 @@ The window is a WKWebView talking to a loopback HTTP server, so everything is sc
 - **First launch needs right-click → Open** (ad-hoc signature, no notarization). Removing that step
   requires an Apple Developer Program membership ($99/yr) plus signing and notarization.
 - **macOS only.** The backend is portable stdlib Python, but the shell is WKWebView/Cocoa.
-- Rich text is `contenteditable` — no Markdown live preview, no tables, no drag-in attachments.
+- Rich text is `contenteditable`; Markdown is a second editing view and does **not** support footnotes,
+  math or Mermaid.
+- Tables support insert / edit / alignment / export, but not column dragging or cell merging
+  (`colspan`/`rowspan` survive import).
+- Attachments are capped at 25 MB and only accept drag / paste, no file-menu picker.
 - **Encrypted notes inside `.enex` are not supported** (`<en-crypt>` is dropped by the allow-list;
   title and tags survive, body does not).
 - Single window, single process; search has no query syntax (`AND`, quoted phrases).
 
-Planned: drag-in attachments, tag filtering, image resize, Linux/Windows shell, incremental backup.
+Planned: column resizing and cell merging, tag filtering, image resize, Linux/Windows shell, incremental backup.
 
 ## License
 

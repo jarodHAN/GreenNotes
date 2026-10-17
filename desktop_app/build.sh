@@ -57,12 +57,16 @@ mkdir -p "$RES/app"
 # 后面「内嵌运行时 + 签名」整段被跳过，于是打出一个没签名的包。
 # 同时排除开发期产生在 app/ 里的 notes.db 与 assets/（数据目录），
 # 否则会把本地数据一起分发给别人——即使是示例数据也不该躺在安装包里。
-/usr/bin/rsync -a --exclude '__pycache__' --exclude '*.pyc' \
+/usr/bin/rsync -a --delete --delete-excluded \
+  --exclude '__pycache__' --exclude '*.pyc' \
   --exclude '.DS_Store' --exclude 'notes.db*' --exclude 'assets/' \
   "$APP_SRC/" "$RES/app/"
 # 把 importers 包一并打进 bundle（server.py 用 import importers，见坑 8）
-/usr/bin/rsync -a --exclude '__pycache__' --exclude '*.pyc' \
-  "$HERE/../importers" "$RES/app/"
+# --delete：旧版本残留的 app/importers/importers 嵌套副本、空 __pycache__ 目录会被清掉，
+# 否则它们会跟着 dmg 发出去，里面还是几周前的旧代码。
+/usr/bin/rsync -a --delete --delete-excluded \
+  --exclude '__pycache__' --exclude '*.pyc' --exclude '.DS_Store' \
+  "$HERE/../importers/" "$RES/app/importers/"
 # 清掉上几次构建残留的旧数据文件（数量少，不会触发批量删除保护）
 rm -f "$RES/app/notes.db" "$RES/app/notes.db-shm" "$RES/app/notes.db-wal" 2>/dev/null || true
 rm -rf "$RES/app/assets" 2>/dev/null || true
@@ -110,6 +114,15 @@ FAIL=0
 [ -f "$RES/app/static/index.html" ]   || { echo "  ✗ 缺少前端页面"; FAIL=1; }
 if [ -e "$RES/app/notes.db" ] || [ -d "$RES/app/assets" ]; then
   echo "  ✗ 包里混进了本地数据（notes.db / assets），不能分发"
+  FAIL=1
+fi
+# 空 __pycache__、残留的嵌套 importers 副本都会跟着 dmg 发出去，且里面可能是旧代码
+if [ -n "$(find "$RES/app" -name '__pycache__' -o -name '*.pyc' 2>/dev/null | head -1)" ]; then
+  echo "  ✗ 包里还有 __pycache__ / .pyc（会破坏签名封条）"
+  FAIL=1
+fi
+if [ -d "$RES/app/importers/importers" ]; then
+  echo "  ✗ 包里有多余的嵌套 importers/importers 副本"
   FAIL=1
 fi
 if ! /usr/bin/codesign --verify --deep --strict "$APP" 2>/dev/null; then

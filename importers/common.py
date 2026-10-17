@@ -42,9 +42,17 @@ def safe_name(name: str, fallback: str, idx: int) -> str:
     return re.sub(r"[^\w.\-一-鿿]", "_", name)
 
 
+def sort_time_sql(prefix: str = "") -> str:
+    """SQL 里的「按时间排序」表达式。
+    库里时间有两种写法：导入的 20261017T022000Z、新建的 2026-10-17 13:22:05。
+    直接按字符串比会把新笔记排到导入笔记下面，统一规范成 YYYYMMDDTHHMMSS 再比。"""
+    return ("substr(replace(replace(replace("
+            f"coalesce({prefix}updated,{prefix}created,''),'-',''),':',''),' ','T'),1,15)")
+
+
 def html_to_text(html_str: str) -> str:
     t = re.sub(r"<br\s*/?>", "\n", html_str or "")
-    t = re.sub(r"</(p|div|li|h[1-6]|tr)>", "\n", t)
+    t = re.sub(r"</(p|div|li|h[1-6]|tr|td|th)>", "\n", t)
     t = re.sub(r"<[^>]+>", "", t)
     return html.unescape(t).strip()
 
@@ -124,14 +132,63 @@ def md_to_html(md: str) -> str:
 
     def inline(s: str) -> str:
         s = html.escape(s)
+        # 允许一小撮行内 HTML 原样通过：Markdown 没有下划线语法，
+        # 富文本里的 <u> 转成 Markdown 时只能写成 <u>…</u>，转回来不能被转义成文字。
+        for _tag in ("u", "b", "i", "s", "br"):
+            s = s.replace(f"&lt;{_tag}&gt;", f"<{_tag}>")
+            s = s.replace(f"&lt;/{_tag}&gt;", f"</{_tag}>")
         s = re.sub(r"!\[([^\]]*)\]\(([^)]+)\)", lambda m: f'<img alt="{m.group(1)}" src="{m.group(2)}"/>', s)
         s = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", lambda m: f'<a href="{m.group(2)}">{m.group(1)}</a>', s)
         s = re.sub(r"(?<![\w])#([\w一-鿿\-]+)", lambda m: f'<span class="md-tag">#{m.group(1)}</span>', s)  # #标签
         s = re.sub(r"\[\[([^\]]+)\]\]", lambda m: f'<a href="#" class="wikilink">{m.group(1)}</a>', s)       # [[wikilink]]
         s = re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", s)
         s = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<i>\1</i>", s)
+        s = re.sub(r"~~([^~]+)~~", r"<s>\1</s>", s)
         s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
         return s
+
+    def split_row(line: str):
+        """按未转义的 | 切分一行表格；首尾竖线可有可无。"""
+        s = line.strip()
+        if s.startswith("|"):
+            s = s[1:]
+        if s.endswith("|") and not s.endswith("\\|"):
+            s = s[:-1]
+        return [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", s)]
+
+    def is_sep(line: str) -> bool:
+        """GFM 对齐行：|---|:--:|---:|（必须带竖线，否则会和 --- 分割线混淆）"""
+        if "|" not in line:
+            return False
+        cells = split_row(line)
+        return bool(cells) and all(re.match(r"^:?-{2,}:?$", c) for c in cells)
+
+    def table_html(header, aligns, rows):
+        def cell(tag, text, idx):
+            al = aligns[idx] if idx < len(aligns) else ""
+            style = f' style="text-align:{al}"' if al in ("left", "center", "right") else ""
+            return f"<{tag}{style}>{inline(text)}</{tag}>"
+        n = max([len(header)] + [len(r) for r in rows]) if rows else len(header)
+        head = "".join(cell("th", header[i] if i < len(header) else "", i) for i in range(n))
+        parts = [f"<table><thead><tr>{head}</tr></thead>"]
+        if rows:
+            body_rows = []
+            for r in rows:
+                r = r + [""] * (n - len(r))
+                body_rows.append("<tr>" + "".join(cell("td", c, i) for i, c in enumerate(r)) + "</tr>")
+            parts.append("<tbody>" + "".join(body_rows) + "</tbody>")
+        parts.append("</table>")
+        return "".join(parts)
+
+    def align_of(sep_cell: str):
+        s = sep_cell.strip()
+        if s.startswith(":") and s.endswith(":"):
+            return "center"
+        if s.endswith(":"):
+            return "right"
+        if s.startswith(":"):
+            return "left"
+        return ""
 
     while i < len(lines):
         line = lines[i]
@@ -191,6 +248,19 @@ def md_to_html(md: str) -> str:
             list_type = "ol"
             list_buf.append(om.group(2))
             i += 1
+            continue
+        # 表格（GFM）：本行含 |，下一行是 |---| 对齐行
+        if "|" in line and i + 1 < len(lines) and is_sep(lines[i + 1]):
+            flush_list()
+            header = split_row(line)
+            aligns = [align_of(c) for c in split_row(lines[i + 1])]
+            rows = []
+            j = i + 2
+            while j < len(lines) and lines[j].strip() and "|" in lines[j]:
+                rows.append(split_row(lines[j]))
+                j += 1
+            out.append(table_html(header, aligns, rows))
+            i = j
             continue
         # 空行
         if not line.strip():
@@ -267,9 +337,17 @@ def persist_notes(notes: List[ImportedNote], assets_dir: str) -> dict:
                 res_count += 1
                 res_bytes += len(res.data)
                 res.saved_as = fn
+                if (res.mime or "").lower().startswith("image/"):
+                    repl = f'<img src="assets/{fn}" alt="{html.escape(fn)}"/>'
+                else:
+                    # 非图片附件：以前一律当 <img>，PDF/zip 导入后会变成一张破图。
+                    # 现在落成附件卡片，点击可由系统程序打开，导出 ENEX 也走 en-media。
+                    repl = (f'<a class="attach" href="assets/{fn}" '
+                            f'title="{html.escape(res.filename or fn)}">'
+                            f'📎 {html.escape(res.filename or fn)}</a>')
                 note.content_html = re.sub(
                     r'<en-media[^>]*hash="' + re.escape(h) + r'"[^>]*/?>',
-                    f'<img src="assets/{fn}" alt="{html.escape(fn)}"/>',
+                    lambda m: repl,
                     note.content_html)
 
         # 2) 显式 resources（markdown/html 引用到的本地图片等）

@@ -227,6 +227,10 @@ def _render_table(rows):
 def html_to_markdown(html):
     if not html:
         return ""
+    # 附件卡片末尾的「12.4 KB」是 <span class="sz"> 里的展示文字，属于 UI 装饰，
+    # 不进 Markdown，否则会变成 [📎 设计稿.pdf12.4 KB](assets/…)
+    html = re.sub(r'<span[^>]*class="[^"]*\bsz\b[^"]*"[^>]*>.*?</span>', '',
+                  html, flags=re.S | re.I)
     c = _MDConverter()
     try:
         c.feed(html)
@@ -237,6 +241,14 @@ def html_to_markdown(html):
 
 def _strip_to_text(html):
     return re.sub(r"<[^>]+>", "", html or "").strip()
+
+
+def _sort_sql():
+    try:
+        from importers.common import sort_time_sql
+        return sort_time_sql()
+    except Exception:
+        return "updated"
 
 
 # ---------------------------------------------------------------------------
@@ -302,10 +314,18 @@ def _note_inner(con, assets_dir, nid):
                 data = f.read()
         hhash = hashlib.md5(data).hexdigest() if data else (h or "")
         if base:
+            # 图片：<img src="assets/x.png"> → <en-media>
             body = re.sub(
                 r'<img[^>]+src=["\'][^"\']*%s["\'][^>]*>' % re.escape(base),
                 f'<en-media hash="{hhash}" type="{mime or "application/octet-stream"}"/>',
                 body,
+            )
+            # 非图片附件：正文里是 <a class="attach" href="assets/x.pdf">📎 …</a>
+            # ENML 的 en-media 对非图片就是「附件」，需要同样替换，否则导出后文件就丢了
+            body = re.sub(
+                r'<a[^>]+href=["\'][^"\']*%s["\'][^>]*>.*?</a>' % re.escape(base),
+                f'<en-media hash="{hhash}" type="{mime or "application/octet-stream"}"/>',
+                body, flags=re.S | re.I,
             )
         res_elems.append(_resource_xml(filename or base, hhash, data, mime or "application/octet-stream"))
 
@@ -361,7 +381,8 @@ def notebook_markdown(con, nbid):
     name = cur.execute("SELECT name FROM notebooks WHERE id=?", (nbid,)).fetchone()
     name = name[0] if name else "笔记本"
     ids = [r[0] for r in cur.execute(
-        "SELECT id FROM notes WHERE notebook_id=? ORDER BY updated DESC", (nbid,)).fetchall()]
+        "SELECT id FROM notes WHERE notebook_id=? ORDER BY " + _sort_sql() + " DESC",
+        (nbid,)).fetchall()]
     parts = [f"# 笔记本：{name}\n"]
     for i in ids:
         md = note_markdown(con, i)
@@ -373,6 +394,7 @@ def notebook_markdown(con, nbid):
 def notebook_enex(con, assets_dir, nbid):
     cur = con.cursor()
     ids = [r[0] for r in cur.execute(
-        "SELECT id FROM notes WHERE notebook_id=? ORDER BY updated DESC", (nbid,)).fetchall()]
+        "SELECT id FROM notes WHERE notebook_id=? ORDER BY " + _sort_sql() + " DESC",
+        (nbid,)).fetchall()]
     notes_xml = "\n".join(_note_inner(con, assets_dir, i) for i in ids)
     return _wrap_enex(notes_xml)

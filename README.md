@@ -12,7 +12,7 @@
   <img alt="platform" src="https://img.shields.io/badge/macOS-11%2B-000000?logo=apple&logoColor=white">
   <img alt="arch" src="https://img.shields.io/badge/universal-x86__64%20%7C%20arm64-00a82d">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-00a82d">
-  <img alt="version" src="https://img.shields.io/badge/version-1.1-00a82d">
+  <img alt="version" src="https://img.shields.io/badge/version-1.2-00a82d">
   <img alt="deps" src="https://img.shields.io/badge/dependencies-none-00a82d">
 </p>
 
@@ -24,9 +24,9 @@
 
 ## 下载安装
 
-**[⬇ 下载 LocalNotes-1.1.dmg](https://github.com/jarodHAN/GreenNotes/releases/latest)**（18 MB，内嵌运行环境）
+**[⬇ 下载 LocalNotes-1.2.dmg](https://github.com/jarodHAN/GreenNotes/releases/latest)**（18 MB，内嵌运行环境）
 
-也放在仓库里：[`dist/LocalNotes-1.1.dmg`](dist/LocalNotes-1.1.dmg)
+也放在仓库里：[`dist/LocalNotes-1.2.dmg`](dist/LocalNotes-1.2.dmg)
 
 1. 双击 dmg，把 `LocalNotes.app` 拖进 `Applications`
 2. 第一次打开：在「应用程序」里 **右键点 LocalNotes → 打开 → 再点「打开」**
@@ -43,8 +43,8 @@ xattr -dr com.apple.quarantine /Applications/LocalNotes.app
 校验安装包：
 
 ```bash
-shasum -a 256 LocalNotes-1.1.dmg
-# bdf03426958c2679d199890771c540f6bcb49a9fb852ef828cbc889e4ae8bdca
+shasum -a 256 LocalNotes-1.2.dmg
+# 4f44efe8b2d3e13c8e1a15d13c761bb11f006e25b3b77955ba015e69bc1eebc3
 ```
 
 > 应用包名叫 `LocalNotes.app`（早期代号），项目名是 GreenNotes，绿色取自界面主色 `#00a82d`。
@@ -58,11 +58,45 @@ shasum -a 256 LocalNotes-1.1.dmg
 | **笔记本** | 新建、删除；**双击名字直接改名**，或点悬停出现的铅笔 `✎`，或右键菜单 |
 | **笔记** | 新建、编辑、保存（⌘S）、删除；标题与正文分离，列表按更新时间倒序 |
 | **富文本** | 加粗 / 斜体 / 下划线 / 等宽 / 无序列表 / 有序列表 / 引用 / 代码 / 清除格式 |
+| **Markdown** | 工具栏切到 **Markdown** 后是「源码 + 实时预览」左右分栏，改一个字预览立刻更新；两种模式共用同一份数据（存 HTML） |
+| **表格** | 一键插入 2×2 ~ 5×4 表格，单元格里直接输入，Tab 跳下一格；导出 Markdown 时自动变成 GFM 表格 |
+| **附件** | 把文件拖进正文即可：图片直接显示，PDF/Office/压缩包变成附件卡片，点一下用系统默认程序打开 |
 | **全文搜索** | 标题 + 正文一起搜，中文两字也能命中（FTS5 trigram，短词自动回退 LIKE） |
 | **导入** | Evernote `.enex`（含图片附件）、印象笔记/有道云笔记导出的 HTML、Markdown、纯文本、Obsidian 笔记库、普通文件夹批量递归 |
 | **导出** | 单篇或整本笔记本 → Markdown / ENEX；中文标题文件名不乱码；导出前自动保存 |
 | **拖拽归类** | 按住笔记拖到左侧任意笔记本上即完成移动，目标会高亮 |
 | **标签** | 导入时保留原标签，编辑器内显示 |
+
+### Markdown 实时预览
+
+![Markdown 分栏](docs/images/markdown.png)
+
+工具栏左侧的 **富文本 / Markdown** 是同一篇笔记的两种编辑方式，随时切换、来回不丢东西：
+
+- 切到 Markdown 时，当前正文由服务端 `html_to_markdown` 转成源码填进左侧
+- 右侧预览是纯前端渲染（自带 GFM 子集：标题、列表、引用、代码块、表格、图片、删除线），逐字更新，不联网
+- 保存（⌘S）或切回富文本时，源码经 `md_to_html` 转回 HTML 入库——**库里始终只有一份 HTML**，
+  搜索、导出 ENEX、导入其他格式都不受影响
+
+### 表格
+
+点工具栏 **▦ 表格** 选尺寸即可插入。富文本模式下直接在格子里打字，Tab 跳到下一格；
+Markdown 模式下插入的是 `| 列1 | 列2 |` 模板。表头、斑马纹、对齐（`:-` `:-:` `-:`）都支持，
+导出的 Markdown 是标准 GFM 表格，ENEX 里则是原生 `<table>`。
+
+### 附件拖入
+
+把文件从 Finder 拖进正文任意位置即可：
+
+| 类型 | 行为 |
+|---|---|
+| 图片（png / jpg / gif / webp…） | 直接插入正文并显示 |
+| 其他文件（pdf / docx / xlsx / zip…） | 变成 `📎 文件名 + 体积` 的附件卡片 |
+| 剪贴板里的截图 | 直接 ⌘V 粘贴，同样走上传 + 插入 |
+
+附件落在数据目录的 `assets/` 里，同一篇笔记内相同内容只存一份（按 MD5 去重）。
+点附件卡片不会把窗口导航走，而是交给系统用默认程序打开（WKWebView 里的原生 `NSWorkspace` 调用）。
+单个文件上限 25 MB。
 
 ### 导出
 
@@ -168,11 +202,11 @@ python3 desktop_app/build_runtime.py /path/to/x86_64/python /path/to/arm64/pytho
 ```
 GreenNotes/
 ├── app/                     # 后端 + 前端（纯标准库，零依赖）
-│   ├── server.py            # HTTP 服务、路由、SQLite、FTS5 搜索
+│   ├── server.py            # HTTP 服务、路由、SQLite、FTS5、附件上传、HTML⇄MD 转换
 │   ├── exporter.py          # 导出 Markdown / ENEX（单篇 + 整本）
 │   ├── sanitize.py          # HTML 白名单净化（防 XSS，含空元素处理）
 │   ├── sample.enex          # 首启示例数据
-│   ├── static/index.html    # 单文件前端（HTML + CSS + JS，无框架无构建）
+│   ├── static/index.html    # 单文件前端（富文本 + Markdown 双模式，无框架无构建）
 │   └── static/icon-*.png
 ├── importers/               # 多格式导入器
 │   ├── dispatch.py          # 按扩展名/内容分派
@@ -186,7 +220,7 @@ GreenNotes/
 │   ├── build_runtime.py     # 双架构运行时合并 + 裁剪
 │   ├── make_icon.py  icon_lib.py  icon_variants.py  # 图标生成
 │   └── AppIcon.png
-├── dist/LocalNotes-1.1.dmg  # 可直接分发的安装包
+├── dist/LocalNotes-1.2.dmg  # 可直接分发的安装包
 └── docs/images/             # 截图
 ```
 
@@ -209,6 +243,8 @@ App 的窗口其实是个 WKWebView，前后端通过本机 HTTP 通信。这些
 | GET | `/api/tags` | 标签及计数 |
 | GET | `/api/note/<id>/export?fmt=md\|enex` | 导出单篇 |
 | GET | `/api/notebook/<id>/export?fmt=md\|enex` | 导出整本 |
+| POST | `/api/convert` | HTML ⇄ Markdown 互转 `{from:'html'\|'md', text}` |
+| POST | `/api/note/<id>/attach` | 上传附件 `{filename, data(base64)}`，返回 `assets/…` 地址 |
 | POST | `/api/note` | 新建笔记 `{notebook_id,title,content_html,tags}` |
 | POST | `/api/notebook` | 新建笔记本 `{name}` |
 | POST | `/api/note/<id>` | 保存笔记 |
@@ -227,8 +263,10 @@ App 的窗口其实是个 WKWebView，前后端通过本机 HTTP 通信。这些
 - **首次打开需要右键「打开」**：ad-hoc 签名，没有 Apple 付费开发者证书，也没有公证（Notarization）。
   要消掉这一步只能买 $99/年的 Apple Developer Program，改签名 + 公证 + 重打包。
 - **只支持 macOS**。后端是纯标准库 Python，理论上 Linux 能跑，但窗口外壳是 WKWebView/cocoa，未做。
-- 富文本编辑器是 `contenteditable`，不是 Markdown 实时预览，也没有表格/附件拖入。
+- 富文本编辑器是 `contenteditable`；Markdown 是另一种编辑视图，**不支持**脚注、数学公式、Mermaid 等扩展语法。
+- 表格支持插入、编辑、对齐与导出，但还不能拖拽调列宽、合并单元格（`colspan/rowspan` 导入后会保留）。
+- 附件单个上限 25 MB；只支持拖入/粘贴，暂不支持从「文件」菜单选择。
 - `.enex` 里的**加密笔记不支持**（`<en-crypt>` 不在 HTML 白名单里，导入后正文为空，标题与标签仍在）。
 - 单窗口、单进程；搜索没有高级语法（`AND`/引号分组等）。
 
-后续想做的：附件拖入、按标签筛选、笔记内图片缩放、Linux/Windows 外壳、增量备份。
+后续想做的：表格列宽拖拽与合并单元格、按标签筛选、笔记内图片缩放、Linux/Windows 外壳、增量备份。

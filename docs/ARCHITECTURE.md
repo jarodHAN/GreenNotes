@@ -83,6 +83,17 @@ INSERT INTO notes_fts(rowid, title, content_text) SELECT id, title, content_text
 - **ENEX**：段落级重组为 ENML，附件转 base64 `<resource>`，`en-media` 的 hash 与 resource 的 MD5 对齐。
   ENML 是严格校验的，所以正文必须干净——`<img>`、`<br>`、`<hr>` 这类空元素不能带闭合标签。
 
+### 附件（拖入 / 粘贴）
+
+`POST /api/note/<id>/attach` 收 base64，落盘为 `assets/<原名>-<md5前8位>.<ext>`，并在 `resources` 记账；
+同一篇笔记里 md5 相同直接复用（不重复占空间）。正文里图片写 `<img src="assets/…">`，
+其他文件写 `<a class="attach" href="assets/…">📎 文件名<span class="sz">体积</span></a>`——
+`sz` 那段是纯展示，导出 Markdown 前会被正则剥掉，否则会变成 `[📎 报告.pdf12.4 KB](…)`。
+
+`resources` 表本来就是 ENEX 的资源清单，所以附件不需要第二套存储：导出时按 mime 还原成
+`<en-media>`（图片渲染成图，其他类型在 Evernote 里就是附件）。反方向导入时同理，
+以前非图片也被写成 `<img>`，PDF 会变成裂图，现在按 mime 分开处理。
+
 ---
 
 ## 3. 前端：一个文件，零构建
@@ -93,6 +104,32 @@ INSERT INTO notes_fts(rowid, title, content_text) SELECT id, title, content_text
 三栏用 flex 布局，**每个纵向 flex 容器都必须 `min-height: 0`**——
 否则子元素内容一长，`min-height:auto` 会把整页撑高，右栏内部滚动条就变成了整页滚动
 （左侧笔记本列表也会跟着滚走，这正是早期被报过的 bug）。
+
+### 双模式编辑器：HTML 是唯一真相
+
+Markdown 不是第二套存储，而是 HTML 的另一种视图：
+
+```
+富文本 (contenteditable)  ──保存──►  sanitize ──► notes.content_html
+        ▲                                  │
+        │ 切回：md_to_html                  │ 切走：html_to_markdown
+        │                                  ▼
+   Markdown 源码 + 前端预览  ◄──── /api/convert
+```
+
+- 切到 Markdown：把 `edContent.innerHTML` 交给 `/api/convert {from:'html'}`，拿回源码填进 textarea
+- 保存或切回：`/api/convert {from:'md'}` 得到 HTML，再走原本的保存链路（净化、纯文本、入库）
+- 右侧预览是 `mdRender()` 在浏览器里跑，自带 GFM 子集，**纯前端、零依赖**，只为即时反馈；
+  最终落库的永远是服务端转换的结果，避免两套渲染器逐渐跑偏
+
+这么设计的好处：搜索（`content_text`）、导出 ENEX、导入其它格式全部不用改。
+
+### 表格
+
+`sanitize.py` 的白名单本来就放行 `table/thead/tbody/tr/td/th`（含 `colspan`/`rowspan`/`style`），
+所以表格只需要补两件事：插入 UI（`insertTable()` 用 Range 在光标处插 DOM，不依赖
+`execCommand('insertHTML')`——它在 WKWebView 上不可靠）和样式（边框、表头底色、斑马纹）。
+导出侧 `_MDConverter` 已经把 `<table>` 拼成 GFM 表格。
 
 ---
 
@@ -116,6 +153,8 @@ runtime/python (可选) ──────────────────�
 3. `Contents/Resources/app/static/index.html` 存在
 4. `codesign --verify --deep --strict` 通过
 5. 包内**没有** `notes.db*` / `assets/`
+6. 包内**没有** `__pycache__` / `*.pyc`（会破坏签名封条）
+7. 包内**没有**嵌套的 `importers/importers` 副本（旧构建残留，里面是几周前的代码）
 
 ### 内嵌运行时（`build_runtime.py`）
 
@@ -131,13 +170,14 @@ python-build-standalone 的 `install_only_stripped` 两个架构解包后：
 
 ---
 
-## 5. 原生外壳：五处必须接的手
+## 5. 原生外壳：六处必须接的手
 
 | 位置 | 不接会怎样 |
 |---|---|
 | `WKUIDelegate` | 不实现 `runJavaScriptAlertPanel` / `ConfirmPanel` / `TextInputPanel`，页面里 `alert/confirm/prompt` **静默失效**，按钮点了没反应。现在前端还额外做了页内弹窗，双保险 |
 | `NSApp.mainMenu` | 没有菜单，⌘C/⌘V/⌘A 完全不触发（复制粘贴走 responder chain 的 `copy:`/`paste:`）。菜单项的 `target` 必须是 `nil` |
 | 下载 | WKWebView 里 `<a download>` 不会下载，还会把页面导航成源码。导出改走 `WKScriptMessageHandler` + `NSSavePanel` + `URLSession` 回源取数据 |
+| 附件打开 | 正文里的附件是 `assets/…` 相对地址，WKWebView 里点它会**把整个界面导航到文件上**（回不来）。改走 `openFile` 通道 → `NSWorkspace.shared.open`，并且只接受纯文件名、拒绝 `../` 路径穿越 |
 | `PYTHONDONTWRITEBYTECODE=1` + `-B` | Python 往包内写 `__pycache__`，代码签名封条立刻失效，别的机器二次打开可能提示「已损坏」 |
 | 数据目录放 `Application Support` | 放 App 包内的话，App 一移动/升级，笔记就没了 |
 
@@ -155,6 +195,8 @@ python-build-standalone 的 `install_only_stripped` 两个架构解包后：
    并且外层不要用 `bash build.sh | tail` 这种把退出码吃掉的方式调用。
 2. **`rsync -a app/` 会把开发者本地的 `notes.db`、`assets/` 一起打进安装包**。
    分发给别人就等于把自己的笔记发出去了。对策：显式 `--exclude`，并在自检里当门禁查。
+   另外必须是 `--delete --delete-excluded`：`.app` 是原地更新的，旧版本留下的空 `__pycache__`、
+   嵌套的 `importers/importers` 副本、`.DS_Store` 不会被 `cp` 覆盖掉，会跟着 dmg 一起发出去。
 
 ---
 

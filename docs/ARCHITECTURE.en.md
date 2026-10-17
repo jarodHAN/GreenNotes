@@ -100,6 +100,19 @@ import.
   the `en-media` hash is aligned with the resource MD5. ENML is strictly validated, so the body must
   be clean — void elements such as `<img>`, `<br>`, `<hr>` must not carry closing tags.
 
+### Attachments (drag & drop / paste)
+
+`POST /api/note/<id>/attach` takes base64 and writes `assets/<name>-<first 8 of md5>.<ext>`, recording
+it in `resources`; identical content inside the same note is reused instead of duplicated. In the body,
+images become `<img src="assets/…">` and everything else becomes
+`<a class="attach" href="assets/…">📎 name<span class="sz">size</span></a>` — the `sz` span is pure UI
+and is stripped before Markdown export, otherwise you would get `[📎 report.pdf12.4 KB](…)`.
+
+`resources` was already the ENEX resource list, so attachments need no second storage: export maps them
+back to `<en-media>` (images render as pictures, other types become attachments in Evernote). Import
+does the reverse — previously non-images were also rewritten as `<img>`, so PDFs showed up as broken
+images; now the mime type decides.
+
 ---
 
 ## 3. Front end: one file, zero build
@@ -111,6 +124,37 @@ The three panes are flex layouts, and **every vertical flex container needs `min
 Otherwise a long child makes `min-height:auto` grow the page, and the right pane's internal scrollbar
 turns into whole-page scrolling — which drags the notebook list along with it (exactly the bug
 reported early on).
+
+### Dual-mode editor: HTML is the single source of truth
+
+Markdown is not a second store, it is another view of the HTML:
+
+```
+Rich text (contenteditable)  ──save──►  sanitize ──► notes.content_html
+        ▲                                  │
+        │ switch back: md_to_html          │ switch away: html_to_markdown
+        │                                  ▼
+   Markdown source + client preview  ◄──── /api/convert
+```
+
+- Switching to Markdown sends `edContent.innerHTML` to `/api/convert {from:'html'}` and puts the result
+  in the textarea
+- Saving or switching back converts `{from:'md'}` into HTML and follows the normal save path
+  (sanitize, plain text, database)
+- The right pane is `mdRender()` running in the browser (GFM subset, zero dependencies) purely for
+  instant feedback; what gets stored is always the server's conversion, so the two renderers cannot
+  drift apart silently
+
+The payoff: search (`content_text`), ENEX export and every importer keep working untouched.
+
+### Tables
+
+The sanitizer allow-list already permitted `table/thead/tbody/tr/td/th` (with `colspan`/`rowspan`/`style`),
+so tables only needed two things: an insert UI (`insertTable()` uses a Range to insert real DOM at the
+caret — `execCommand('insertHTML')` is unreliable in WKWebView) and styling (borders, header tint,
+zebra rows). On the way out, `_MDConverter` already emits GFM table syntax.
+
+---
 
 ---
 
@@ -134,6 +178,8 @@ The self-check at the end of `build.sh` is a hard gate: any failed condition mea
 3. `Contents/Resources/app/static/index.html` exists
 4. `codesign --verify --deep --strict` passes
 5. the bundle contains **no** `notes.db*` and no `assets/`
+6. the bundle contains **no** `__pycache__` / `*.pyc` (they break the signing seal)
+7. the bundle contains **no** nested `importers/importers` copy (a stale leftover of older builds)
 
 ### Bundled runtime (`build_runtime.py`)
 
@@ -151,13 +197,14 @@ Result: 32 MB for one architecture, 44 MB for both, 18 MB as a dmg.
 
 ---
 
-## 5. The native shell: five things you must wire up
+## 5. The native shell: six things you must wire up
 
 | Where | What breaks if you don't |
 |---|---|
 | `WKUIDelegate` | Without `runJavaScriptAlertPanel` / `ConfirmPanel` / `TextInputPanel`, `alert/confirm/prompt` **fail silently** and buttons appear dead. The front end also implements in-page dialogs as a second line of defence |
 | `NSApp.mainMenu` | No menu means ⌘C/⌘V/⌘A never fire (copy and paste go through the responder chain's `copy:`/`paste:`). Menu item `target` must be `nil` |
 | Downloads | `<a download>` does not download inside WKWebView; it navigates to the source instead. Export goes through `WKScriptMessageHandler` + `NSSavePanel` + `URLSession` back to the local server |
+| Opening attachments | Attachment links are relative `assets/…` paths; clicking one **navigates the whole UI to the file** (with no way back). They go through the `openFile` channel → `NSWorkspace.shared.open`, which only accepts a plain filename and rejects `../` traversal |
 | `PYTHONDONTWRITEBYTECODE=1` + `-B` | Python writes `__pycache__` into the bundle, which breaks the code-signing seal instantly; a second launch on another machine may then report the app as damaged |
 | Data directory in `Application Support` | Inside the bundle, moving or upgrading the app would take all your notes with it |
 
@@ -178,7 +225,9 @@ but the artifact was broken":
    cleans them), and never invoke the build as `bash build.sh | tail`, which swallows the exit code.
 2. **`rsync -a app/` happily copies the developer's `notes.db` and `assets/` into the installer.**
    Shipping that means shipping your own notes. Countermeasure: explicit `--exclude`, enforced as a
-   gate in the self-check.
+   gate in the self-check. It also has to run with `--delete --delete-excluded`: the `.app` is updated
+   in place, so empty `__pycache__` dirs, a nested `importers/importers` copy and `.DS_Store` from
+   earlier builds survive a plain copy and would ship inside the dmg.
 
 ---
 

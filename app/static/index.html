@@ -114,6 +114,44 @@
   .tagsinput .pill{background:var(--green-l); color:var(--green-d); border-radius:4px; padding:2px 8px; font-size:12px; font-weight:600}
   .tagsinput .pill b{margin-left:4px; cursor:pointer; opacity:.7}
   .tagsinput input{border:none; outline:none; font-size:12px; flex:1; min-width:80px; background:transparent}
+  /* ---- 编辑模式切换 ---- */
+  .mode-switch{display:flex; background:var(--bg); border-radius:6px; padding:2px; gap:2px}
+  .mode-switch button{padding:0 10px; height:24px; border-radius:4px; font-size:12px; color:var(--sub);
+    display:flex; align-items:center}
+  .mode-switch button:hover{background:#eef2f0; color:var(--ink)}
+  .mode-switch button.on{background:#fff; color:var(--green-d); font-weight:700; box-shadow:var(--shadow)}
+  .toolbar .sep{width:1px; height:18px; background:var(--line); margin:0 3px}
+  /* ---- Markdown 分栏 ---- */
+  .ed-body{position:relative}
+  .ed-body.md-mode{overflow:hidden; display:flex; flex-direction:column; padding-bottom:18px}
+  .md-wrap{display:flex; gap:12px; flex:1 1 auto; min-height:0}
+  .md-pane{flex:1 1 50%; min-width:0; min-height:0; display:flex; flex-direction:column}
+  .md-pane .lbl{font-size:10.5px; color:#9aa8a2; font-weight:700; letter-spacing:.6px; margin:2px 0 5px 3px}
+  .md-src{flex:1 1 auto; min-height:0; width:100%; resize:none; border:1px solid var(--line); border-radius:8px;
+    background:#fff; padding:16px 18px; outline:none; overflow:auto; color:var(--ink);
+    font:13px/1.75 ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace; tab-size:2}
+  .md-src:focus{border-color:var(--green)}
+  .md-preview{flex:1 1 auto; min-height:0; overflow:auto}
+  .md-preview.content{min-height:0; height:auto}
+  .md-ph{color:#a7b5ae}
+  /* ---- 表格 ---- */
+  .content table{border-collapse:collapse; width:100%; margin:12px 0; font-size:13px}
+  .content th,.content td{border:1px solid var(--line); padding:6px 9px; vertical-align:top; min-width:40px}
+  .content th{background:var(--green-l); font-weight:700; text-align:left}
+  .content tbody tr:nth-child(even) td{background:#fbfcfb}
+  .content th:focus,.content td:focus{outline:2px solid #b7e6c6; outline-offset:-2px}
+  /* ---- 附件 ---- */
+  .content a.attach{display:inline-flex; align-items:center; gap:6px; padding:5px 10px; margin:4px 6px 4px 0;
+    border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink);
+    text-decoration:none; font-size:13px}
+  .content a.attach:hover{border-color:var(--green); background:var(--green-l); color:var(--green-d)}
+  .content a.attach .sz{color:var(--sub); font-size:11px}
+  /* ---- 拖入遮罩 ---- */
+  .drop-veil{position:absolute; inset:10px 14px 18px; display:none; align-items:center; justify-content:center;
+    flex-direction:column; gap:5px; background:rgba(0,168,45,.05); border:2px dashed var(--green);
+    border-radius:10px; color:var(--green-d); font-weight:700; z-index:8; pointer-events:none}
+  .drop-veil.show{display:flex}
+  .drop-veil .sub{font-weight:400; font-size:12px; color:var(--sub)}
 </style>
 </head>
 <body>
@@ -158,6 +196,11 @@
         </div>
         <div class="ed-meta" id="edMeta"></div>
         <div class="toolbar" id="toolbar">
+          <div class="mode-switch" id="modeSwitch">
+            <button data-mode="rich" class="on" title="所见即所得编辑">富文本</button>
+            <button data-mode="md" title="Markdown 源码 + 实时预览">Markdown</button>
+          </div>
+          <span class="sep"></span>
           <button title="加粗" onclick="fmt('bold')"><b>B</b></button>
           <button title="斜体" onclick="fmt('italic')"><i>I</i></button>
           <button title="下划线" onclick="fmt('underline')"><u>U</u></button>
@@ -167,9 +210,25 @@
           <button title="引用" onclick="fmt('formatBlock','blockquote')">❝</button>
           <button title="代码" onclick="fmt('formatBlock','pre')">&lt;/&gt;</button>
           <button title="清除格式" onclick="fmt('removeFormat')">⌫</button>
+          <span class="sep"></span>
+          <button title="插入表格" onclick="askTable()">▦ 表格</button>
+          <button title="添加附件（也可以直接把文件拖进正文）" onclick="pickAttach()">📎 附件</button>
         </div>
-        <div class="ed-body">
+        <div class="ed-body" id="edBody">
           <div class="content" id="edContent" contenteditable="true"></div>
+          <div class="md-wrap hidden" id="mdWrap">
+            <div class="md-pane">
+              <div class="lbl">MARKDOWN</div>
+              <textarea class="md-src" id="mdSrc" spellcheck="false"
+                placeholder="# 标题&#10;&#10;正文支持 **粗体**、`代码`、- 列表、&gt; 引用、| 表格 |&#10;&#10;右侧实时预览，⌘S 保存"></textarea>
+            </div>
+            <div class="md-pane">
+              <div class="lbl">实时预览</div>
+              <div class="content md-preview" id="mdPrev"></div>
+            </div>
+          </div>
+          <div class="drop-veil" id="dropVeil">松开以添加附件
+            <span class="sub">图片直接插入正文，其他文件生成附件卡片</span></div>
         </div>
       </div>
     </div>
@@ -191,6 +250,7 @@
   <input type="file" id="fileInput" class="hidden" multiple
     accept=".enex,.md,.markdown,.mdx,.html,.htm,.mht,.mhtml,.txt,.text,.note">
   <input type="file" id="dirInput" class="hidden" webkitdirectory directory multiple>
+  <input type="file" id="attachInput" class="hidden" multiple>
 
   <div class="toast" id="toast"></div>
 
@@ -496,9 +556,11 @@ async function exportCurrentNote(){
   const n = state.currentNote;
   if(!n){ toast('请先选择一篇笔记'); return; }
   // 有未保存的改动就先存一次，导出的是眼前看到的内容
+  const curHtml = await editorHtml();
+  if(curHtml === null) return;
   const dirty = !n.id ||
     $('edTitle').value.trim() !== (n.title || '') ||
-    $('edContent').innerHTML !== (n.content_html || '');
+    curHtml !== (n.content_html || '');
   if(dirty){
     await saveNote();
     if(!state.currentNote || !state.currentNote.id){ toast('请先保存这篇笔记'); return; }
@@ -519,9 +581,12 @@ async function openNote(id){
   $('edWrap').classList.remove('hidden');
   $('edTitle').value = n.title || '';
   $('edContent').innerHTML = n.content_html || '';
-  $('edMeta').innerHTML =
-    `来源：${esc(n.source||'本地')}　|　创建：${fmtDate(n.created)}　|　更新：${fmtDate(n.updated)}` +
-    (n.tags && n.tags.length ? `　|　标签：${n.tags.map(t=>'#'+esc(t)).join(' ')}` : '');
+  updateMeta(n);
+  if(mode === 'md'){
+    const r = await convert('html', n.content_html || '');
+    $('mdSrc').value = (r && r.text) || '';
+    renderPreview();
+  }
   renderNotes();
 }
 function closeEditor(){
@@ -547,6 +612,8 @@ async function newNote(){
   state.currentNote = { id:null, notebook_id:nb };
   $('edTitle').value = '';
   $('edContent').innerHTML = '';
+  $('mdSrc').value = '';
+  renderPreview();
   $('edMeta').textContent = '新笔记 · 未保存';
   renderNotes();
   $('edTitle').focus();
@@ -554,7 +621,8 @@ async function newNote(){
 async function saveNote(){
   if(!state.currentNote){ toast('请先新建或选择一篇笔记'); return; }
   const title = $('edTitle').value.trim();
-  const html  = $('edContent').innerHTML;
+  const html  = await editorHtml();
+  if(html === null) return;
   if(state.currentNote.id){
     const r = await api('/api/note/'+state.currentNote.id,
       {method:'POST', headers:{'Content-Type':'application/json'},
@@ -587,8 +655,452 @@ async function deleteNote(){
   await loadNotebooks(); await loadNotes(state.currentNb);
   toast('已删除');
 }
-function readTags(){ return (window._tags || []).map(t=>t.trim()).filter(Boolean); }
-function fmt(c){ $('edContent').focus(); document.execCommand(c, false, arguments[1] || null); }
+function readTags(){
+  // 没有标签编辑器时（当前版本），保存要沿用这篇笔记原有的标签。
+  // 以前直接返回空数组，于是「编辑正文 → 保存」会把导入时带的标签全部清掉。
+  if(window._tags && window._tags.length) return window._tags.map(t=>t.trim()).filter(Boolean);
+  return (state.currentNote && state.currentNote.tags) ? state.currentNote.tags.slice() : [];
+}
+
+/* =====================================================================
+   编辑器 · 富文本 / Markdown 双模式
+   ---------------------------------------------------------------------
+   DB 里始终只存 HTML（导入导出、搜索、ENEX 全都基于它）。
+   Markdown 模式只是「HTML ⇄ Markdown」的另一种呈现：
+     · 切进 Markdown：把当前 HTML 交给服务端 html_to_markdown
+     · 保存 / 切回富文本：把源码交给服务端 md_to_html 再入库
+   右侧预览是纯前端渲染（无网络、无第三方库），只为即时反馈。
+   ===================================================================== */
+let mode = 'rich';
+let mdTimer = null;
+
+function setModeUI(){
+  const md = mode === 'md';
+  $('edContent').classList.toggle('hidden', md);
+  $('mdWrap').classList.toggle('hidden', !md);
+  $('edBody').classList.toggle('md-mode', md);
+  document.querySelectorAll('#modeSwitch button').forEach(b=>
+    b.classList.toggle('on', b.dataset.mode === mode));
+}
+
+function convert(from, text){
+  return api('/api/convert', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({from, text})});
+}
+
+async function setMode(m){
+  if(m === mode) return;
+  if(m === 'md'){
+    const r = await convert('html', $('edContent').innerHTML);
+    if(r && r.error){ toast('Markdown 转换失败：'+r.error); return; }
+    $('mdSrc').value = (r && r.text) || '';
+    mode = 'md';
+  }else{
+    const r = await convert('md', $('mdSrc').value);
+    if(r && r.error){ toast('Markdown 转换失败：'+r.error); return; }
+    $('edContent').innerHTML = (r && r.text) || '';
+    mode = 'rich';
+  }
+  setModeUI();
+  renderPreview();
+}
+document.querySelectorAll('#modeSwitch button').forEach(b=>{ b.onclick = ()=>setMode(b.dataset.mode); });
+
+/* ---------- Markdown 渲染（预览用，GFM 子集） ---------- */
+function mdInline(s){
+  s = esc(s);
+  // Markdown 没有下划线语法，富文本的 <u> 转成 Markdown 后仍是 <u>…</u>，
+  // 预览时要把这几个白名单行内标签还原，否则会显示成字面文字
+  ['u','b','i','s','br'].forEach(t=>{
+    s = s.split('&lt;' + t + '&gt;').join('<' + t + '>');
+    s = s.split('&lt;/' + t + '&gt;').join('</' + t + '>');
+  });
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, '<img alt="$1" src="$2">');
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>');
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  s = s.replace(/(^|[^*])\*([^*]+)\*/g, '$1<i>$2</i>');
+  s = s.replace(/~~([^~]+)~~/g, '<s>$1</s>');
+  return s;
+}
+function mdSplitRow(line){
+  let s = line.trim();
+  if(s.charAt(0) === '|') s = s.slice(1);
+  if(s.slice(-1) === '|' && s.charAt(s.length-2) !== '\\') s = s.slice(0, -1);
+  const cells = []; let cur = '';
+  for(let k=0;k<s.length;k++){
+    const ch = s.charAt(k);
+    if(ch === '\\' && s.charAt(k+1) === '|'){ cur += '|'; k++; continue; }
+    if(ch === '|'){ cells.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+function mdIsSep(line){
+  if(line.indexOf('|') < 0 || line.indexOf('-') < 0) return false;
+  const cells = mdSplitRow(line).filter(c=>c !== '');
+  return cells.length > 0 && cells.every(c=>/^:?-{2,}:?$/.test(c));
+}
+function mdList(items){
+  const root = {indent:-1, type:null, kids:[]};
+  const stack = [root];
+  items.forEach(raw=>{
+    const m = raw.match(/^(\s*)([-*+]|\d+\.)\s+(.*)$/);
+    if(!m) return;
+    const indent = m[1].replace(/\t/g,'  ').length;
+    while(stack.length > 1 && indent <= stack[stack.length-1].indent) stack.pop();
+    const node = {indent, type: /^\d/.test(m[2]) ? 'ol' : 'ul', text:m[3], kids:[]};
+    stack[stack.length-1].kids.push(node);
+    stack.push(node);
+  });
+  const draw = node => {
+    if(!node.kids.length) return '';
+    const tag = node.kids[0].type;
+    return '<'+tag+'>' + node.kids.map(k=>
+      '<li>' + mdInline(k.text) + draw(k) + '</li>').join('') + '</'+tag+'>';
+  };
+  return draw(root);
+}
+function mdRender(src){
+  const lines = String(src || '').replace(/\r\n?/g, '\n').split('\n');
+  const out = [];
+  let i = 0;
+  while(i < lines.length){
+    const line = lines[i];
+    if(/^\s*```/.test(line)){
+      const lang = line.trim().slice(3).trim();
+      const buf = []; i++;
+      while(i < lines.length && !/^\s*```/.test(lines[i])){ buf.push(lines[i]); i++; }
+      i++;
+      out.push('<pre'+(lang?' data-lang="'+esc(lang)+'"':'')+'><code>'+esc(buf.join('\n'))+'</code></pre>');
+      continue;
+    }
+    if(!line.trim()){ i++; continue; }
+    let m = line.match(/^(#{1,6})\s+(.*)$/);
+    if(m){
+      const lv = m[1].length;
+      out.push('<h'+lv+'>'+mdInline(m[2])+'</h'+lv+'>');
+      i++; continue;
+    }
+    if(/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)){ out.push('<hr>'); i++; continue; }
+    if(/^\s*>/.test(line)){
+      const buf = [];
+      while(i < lines.length && /^\s*>/.test(lines[i])){
+        buf.push(lines[i].replace(/^\s*>\s?/, '')); i++;
+      }
+      out.push('<blockquote>'+mdRender(buf.join('\n'))+'</blockquote>');
+      continue;
+    }
+    if(line.indexOf('|') >= 0 && i+1 < lines.length && mdIsSep(lines[i+1])){
+      const head = mdSplitRow(line);
+      const aligns = mdSplitRow(lines[i+1]).map(c=>{
+        const t = c.trim();
+        if(t.charAt(0) === ':' && t.slice(-1) === ':') return 'center';
+        if(t.slice(-1) === ':') return 'right';
+        if(t.charAt(0) === ':') return 'left';
+        return '';
+      });
+      const rows = []; i += 2;
+      while(i < lines.length && lines[i].trim() && lines[i].indexOf('|') >= 0){
+        rows.push(mdSplitRow(lines[i])); i++;
+      }
+      const n = Math.max(head.length, ...rows.map(r=>r.length));
+      const cell = (tag, txt, idx)=>{
+        const al = aligns[idx] || '';
+        return '<'+tag+(al?' style="text-align:'+al+'"':'')+'>'+mdInline(txt || '')+'</'+tag+'>';
+      };
+      let html = '<table><thead><tr>';
+      for(let c=0;c<n;c++) html += cell('th', head[c], c);
+      html += '</tr></thead>';
+      if(rows.length){
+        html += '<tbody>';
+        rows.forEach(r=>{
+          html += '<tr>';
+          for(let c=0;c<n;c++) html += cell('td', r[c], c);
+          html += '</tr>';
+        });
+        html += '</tbody>';
+      }
+      out.push(html + '</table>');
+      continue;
+    }
+    if(/^\s*([-*+]|\d+\.)\s+/.test(line)){
+      const items = [];
+      while(i < lines.length && /^\s*([-*+]|\d+\.)\s+/.test(lines[i])){ items.push(lines[i]); i++; }
+      out.push(mdList(items));
+      continue;
+    }
+    const buf = [line]; i++;
+    while(i < lines.length && lines[i].trim()
+          && !/^\s*(#{1,6}\s|>|```|([-*+]|\d+\.)\s)/.test(lines[i])
+          && !(lines[i].indexOf('|') >= 0 && i+1 < lines.length && mdIsSep(lines[i+1]))){
+      buf.push(lines[i]); i++;
+    }
+    out.push('<p>' + buf.map(mdInline).join('<br>') + '</p>');
+  }
+  return out.join('\n');
+}
+function renderPreview(){
+  if(mode !== 'md') return;
+  const src = $('mdSrc').value;
+  $('mdPrev').innerHTML = src.trim()
+    ? mdRender(src)
+    : '<div class="md-ph">左侧输入 Markdown，这里会实时预览…</div>';
+}
+function schedulePreview(){ clearTimeout(mdTimer); mdTimer = setTimeout(renderPreview, 120); }
+$('mdSrc').addEventListener('input', schedulePreview);
+$('mdSrc').addEventListener('keydown', e=>{
+  if(e.key === 'Tab'){ e.preventDefault(); mdInsert('  '); }
+});
+
+/* ---------- Markdown 模式下插入语法 ---------- */
+function mdInsert(text){
+  const ta = $('mdSrc');
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  ta.setRangeText(text, s, e, 'end');
+  ta.focus();
+  schedulePreview();
+}
+function mdFormat(cmd, arg){
+  const ta = $('mdSrc');
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  const sel = ta.value.slice(s, e);
+  const wrap = (p, q, ph)=>{
+    const body = sel || ph || '';
+    ta.setRangeText(p + body + q, s, e, 'select');
+    if(!sel && body) ta.setSelectionRange(s + p.length, s + p.length + body.length);
+    ta.focus(); schedulePreview();
+  };
+  const lineWrap = p=>{
+    const start = ta.value.lastIndexOf('\n', s - 1) + 1;
+    ta.setRangeText(p, start, start, 'end');
+    ta.focus(); schedulePreview();
+  };
+  switch(cmd){
+    case 'bold':       wrap('**', '**', '粗体'); break;
+    case 'italic':     wrap('*', '*', '斜体'); break;
+    case 'underline':  wrap('<u>', '</u>', '下划线'); break;
+    case 'formatBlock': lineWrap(arg === 'pre' ? '```\n' : (arg === 'blockquote' ? '> ' : '## ')); break;
+    case 'insertUnorderedList': lineWrap('- '); break;
+    case 'insertOrderedList':   lineWrap('1. '); break;
+    case 'removeFormat': toast('Markdown 模式直接删掉标记即可'); break;
+    default: break;
+  }
+}
+
+/* ---------- 表格 ---------- */
+function askTable(){
+  openDialog({
+    title:'插入表格', input:false, okText:'关闭',
+    message:'选一个尺寸插到光标处，之后直接在单元格里输入即可；Tab 跳到下一格。',
+    extra:[
+      {label:'2 列 × 2 行', action:()=>insertTable(2,2)},
+      {label:'3 列 × 3 行', action:()=>insertTable(3,3)},
+      {label:'4 列 × 3 行', action:()=>insertTable(4,3)},
+      {label:'5 列 × 4 行', action:()=>insertTable(5,4)}
+    ]
+  });
+}
+function insertTable(cols, rows){
+  if(mode === 'md'){
+    const head = '| ' + Array.from({length:cols}, (_,i)=>'列'+(i+1)).join(' | ') + ' |';
+    const sep  = '| ' + Array.from({length:cols}, ()=> '---').join(' | ') + ' |';
+    const body = '| ' + Array.from({length:cols}, ()=> '   ').join(' | ') + ' |';
+    mdInsert([head, sep].concat(Array(rows).fill(body)).join('\n') + '\n');
+    return;
+  }
+  let html = '<table><thead><tr>';
+  for(let c=0;c<cols;c++) html += '<th>列'+(c+1)+'</th>';
+  html += '</tr></thead><tbody>';
+  for(let r=0;r<rows;r++){
+    html += '<tr>';
+    for(let c=0;c<cols;c++) html += '<td><br></td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table><p><br></p>';
+  insertHtmlAtCaret(html);
+  toast('已插入表格，Tab 键在单元格间移动');
+}
+function insertHtmlAtCaret(html){
+  const box = $('edContent');
+  box.focus();
+  const sel = window.getSelection();
+  if(!sel || !sel.rangeCount || !box.contains(sel.anchorNode)){
+    box.insertAdjacentHTML('beforeend', html);
+    return;
+  }
+  const r = sel.getRangeAt(0);
+  r.deleteContents();
+  const frag = r.createContextualFragment(html);
+  const last = frag.lastChild;
+  r.insertNode(frag);
+  if(last){
+    const nr = document.createRange();
+    nr.setStartAfter(last);
+    nr.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(nr);
+  }
+}
+
+/* ---------- 附件：拖入 / 粘贴 / 选择 ---------- */
+function humanSize(n){
+  n = Number(n) || 0;
+  if(n < 1024) return n + ' B';
+  if(n < 1048576) return (n/1024).toFixed(1) + ' KB';
+  return (n/1048576).toFixed(1) + ' MB';
+}
+function insertAttachment(r){
+  const name = r.name || r.filename || '附件';
+  if(mode === 'md'){
+    mdInsert((r.image ? '![' + name + '](' + r.url + ')' : '[📎 ' + name + '](' + r.url + ')') + '\n');
+    return;
+  }
+  const html = r.image
+    ? '<img src="' + r.url + '" alt="' + esc(name) + '"><p><br></p>'
+    : '<a class="attach" href="' + r.url + '" title="' + esc(name) + '">📎 ' + esc(name)
+      + '<span class="sz">' + humanSize(r.size) + '</span></a>&nbsp;';
+  insertHtmlAtCaret(html);
+}
+async function addFiles(files){
+  const list = [...(files || [])];
+  if(!list.length) return;
+  const n = state.currentNote;
+  if(!n || !n.id){ toast('请先保存这篇笔记（⌘S），再添加附件'); return; }
+  for(const f of list){
+    if(f.size > 25*1024*1024){ toast('「' + f.name + '」超过 25MB，已跳过'); continue; }
+    toast('正在添加 ' + f.name + ' …');
+    try{
+      const b64 = await fileToB64(f);
+      const r = await api('/api/note/' + n.id + '/attach', {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({filename: f.name, data: b64})});
+      if(!r || r.error){ toast('添加失败：' + ((r && r.error) || '未知错误')); continue; }
+      insertAttachment(r);
+    }catch(err){ toast('「' + f.name + '」读取失败'); }
+  }
+  const fresh = await api('/api/note/' + n.id);
+  if(fresh && !fresh.error){ state.currentNote = fresh; updateMeta(fresh); }
+  // 附件已经落盘了，正文里那行引用也得存下来，否则刷新后引用就没了
+  await saveSilently();
+}
+// 不打"已保存"提示、也不重载编辑器的静默保存（附件插入后用）
+async function saveSilently(){
+  const n = state.currentNote;
+  if(!n || !n.id) return;
+  const html = await editorHtml();
+  if(html === null) return;
+  const r = await api('/api/note/' + n.id, {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({title: $('edTitle').value.trim(), content_html: html, tags: readTags()})});
+  if(r && !r.error){
+    state.currentNote.content_html = r.content_html;
+    state.currentNote.updated = r.updated;
+    state.currentNote.tags = r.tags;
+    updateMeta(r);
+  }
+}
+function pickAttach(){
+  if(!state.currentNote || !state.currentNote.id){ toast('请先保存这篇笔记（⌘S），再添加附件'); return; }
+  $('attachInput').click();
+}
+$('attachInput').onchange = async e=>{
+  const fs = [...e.target.files];
+  e.target.value = '';
+  await addFiles(fs);
+};
+function openAttachment(path){
+  const mh = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openFile;
+  if(mh){ mh.postMessage({path: String(path || '')}); return; }
+  window.open('/' + String(path || '').replace(/^\/+/, ''), '_blank');
+}
+// 拖入文件
+['dragenter','dragover'].forEach(ev=>{
+  $('edBody').addEventListener(ev, e=>{
+    const dt = e.dataTransfer;
+    if(!dt || !dt.types || [...dt.types].indexOf('Files') < 0) return;
+    e.preventDefault(); e.stopPropagation();
+    if(dt.dropEffect !== undefined) dt.dropEffect = 'copy';
+    $('dropVeil').classList.add('show');
+  });
+});
+$('edBody').addEventListener('dragleave', e=>{
+  if(!$('edBody').contains(e.relatedTarget)) $('dropVeil').classList.remove('show');
+});
+function caretRangeAt(x, y){
+  if(document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
+  if(document.caretPositionFromPoint){
+    const p = document.caretPositionFromPoint(x, y);
+    if(!p) return null;
+    const r = document.createRange();
+    r.setStart(p.offsetNode, p.offset);
+    r.collapse(true);
+    return r;
+  }
+  return null;
+}
+$('edBody').addEventListener('drop', async e=>{
+  const dt = e.dataTransfer;
+  if(!dt || !dt.files || !dt.files.length) return;
+  e.preventDefault(); e.stopPropagation();
+  $('dropVeil').classList.remove('show');
+  // 插到鼠标松开的位置，而不是当前光标处
+  if(mode === 'rich'){
+    let r = caretRangeAt(e.clientX, e.clientY);
+    if(r){
+      // 落点在表格单元格里时插到表格后面：把图片塞进 <td> 会把整张表撑变形
+      const node = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement;
+      const tbl = node && node.closest ? node.closest('table') : null;
+      if(tbl){
+        r = document.createRange();
+        r.setStartAfter(tbl);
+        r.collapse(true);
+      }
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(r);
+    }
+  }
+  await addFiles(dt.files);
+});
+// 粘贴截图 / 文件
+$('edContent').addEventListener('paste', async e=>{
+  const items = [...((e.clipboardData && e.clipboardData.items) || [])];
+  const files = items.filter(it=>it.kind === 'file').map(it=>it.getAsFile()).filter(Boolean);
+  if(files.length){ e.preventDefault(); await addFiles(files); }
+});
+$('mdSrc').addEventListener('paste', async e=>{
+  const items = [...((e.clipboardData && e.clipboardData.items) || [])];
+  const files = items.filter(it=>it.kind === 'file').map(it=>it.getAsFile()).filter(Boolean);
+  if(files.length){ e.preventDefault(); await addFiles(files); }
+});
+// 点附件卡片：交给系统默认程序打开（WKWebView 内直接导航会把界面顶掉）
+$('edContent').addEventListener('click', e=>{
+  const a = e.target && e.target.closest ? e.target.closest('a.attach') : null;
+  if(!a) return;
+  e.preventDefault();
+  openAttachment(a.getAttribute('href'));
+});
+
+async function editorHtml(){
+  if(mode !== 'md') return $('edContent').innerHTML;
+  const r = await convert('md', $('mdSrc').value);
+  if(!r || r.error){ toast('Markdown 转换失败：' + ((r && r.error) || '未知错误')); return null; }
+  return r.text || '';
+}
+
+function updateMeta(n){
+  $('edMeta').innerHTML =
+    `来源：${esc(n.source||'本地')}　|　创建：${fmtDate(n.created)}　|　更新：${fmtDate(n.updated)}` +
+    (n.tags && n.tags.length ? `　|　标签：${n.tags.map(t=>'#'+esc(t)).join(' ')}` : '') +
+    (n.resources && n.resources.length ? `　|　附件：${n.resources.length} 个` : '');
+}
+
+function fmt(cmd){
+  if(mode === 'md'){ mdFormat(cmd, arguments[1]); return; }
+  $('edContent').focus();
+  document.execCommand(cmd, false, arguments[1] || null);
+}
 
 /* ---------- 搜索 ---------- */
 let searchTimer = null;
@@ -655,7 +1167,14 @@ $('dirInput').onchange = async e=>{
 
 /* ---------- 工具 ---------- */
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function fmtDate(s){ if(!s) return ''; return String(s).replace('T',' ').slice(0,16); }
+function fmtDate(s){
+  if(!s) return '';
+  s = String(s);
+  // 导入的 Evernote 时间戳是 20261017T022000Z，新建的是 2026-10-17 13:22:05
+  const m = s.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/);
+  if(m) return m[1]+'-'+m[2]+'-'+m[3]+' '+m[4]+':'+m[5];
+  return s.replace('T',' ').slice(0,16);
+}
 function fileToB64(f){ return new Promise((res,rej)=>{ const r=new FileReader();
   r.onload=()=>{ const b=new Uint8Array(r.result); let s='';
     const CH=0x8000; for(let i=0;i<b.length;i+=CH){ s += String.fromCharCode.apply(null, b.subarray(i,i+CH)); }

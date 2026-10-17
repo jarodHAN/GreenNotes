@@ -16,14 +16,17 @@ _ALLOWED_TAGS = {
 }
 # 每个标签允许的属性
 _ALLOWED_ATTRS = {
-    "a": {"href", "title", "name"},
-    "img": {"src", "alt", "title", "width", "height"},
+    "a": {"href", "title", "name", "class"},
+    "img": {"src", "alt", "title", "width", "height", "class"},
+    "table": {"class", "style"},
     "td": {"colspan", "rowspan", "style"},
     "th": {"colspan", "rowspan", "style"},
-    "span": {"style"},
+    "span": {"style", "class"},
     "p": {"style"},
-    "div": {"style"},
+    "div": {"style", "class"},
 }
+# class 只留字母数字、下划线、连字符与空格，避免被拿去做奇怪的选择器
+_CLASS_SAFE = re.compile(r"[^A-Za-z0-9_\-\s]")
 # 完全丢弃的标签（含其全部内容）
 _BAD_TAGS = {
     "script", "style", "iframe", "object", "embed", "link", "meta", "base",
@@ -87,6 +90,10 @@ class _Sanitizer(HTMLParser):
                 v = sv
             if k == "style":
                 v = _INLINE_STYLE_DANGER.sub("", v)
+            if k == "class":
+                v = _CLASS_SAFE.sub("", v).strip()[:80]
+                if not v:
+                    continue
             kept.append((k, v))
         self.stack.append(tag)
         attr_str = "".join(f' {k}="{_esc_attr(v)}"' for k, v in kept)
