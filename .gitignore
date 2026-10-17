@@ -1,1 +1,20 @@
-# placeholder
+# 不需要的东西
+.DS_Store
+__pycache__/
+*.py[cod]
+*.swp
+
+# 本地数据（绝不能进仓库：这是使用者自己的笔记）
+app/notes.db
+app/notes.db-shm
+app/notes.db-wal
+app/assets/
+notes.db*
+
+# 工具链产物（体积大，可由 build_runtime.py / build.sh 重新生成）
+desktop_app/runtime/
+desktop_app/LocalNotes.app/
+desktop_app/.build-*
+desktop_app/*.iconset/
+
+# 说明：dist/*.dmg 是要发布的安装包，故意不做忽略
