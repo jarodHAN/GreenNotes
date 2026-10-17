@@ -1,4 +1,4 @@
-// LocalNotes.app —— macOS 原生外壳
+// GreenNotes.app —— macOS 原生外壳（1.3 起由 LocalNotes 改名）
 // 拉起本地 Python 服务 → 等端口就绪 → WKWebView 加载页面 → 退出时回收服务
 // 仅用系统自带的 swiftc + WebKit，无 Electron / py2app / Rust。
 import Cocoa
@@ -6,7 +6,7 @@ import WebKit
 import Foundation
 
 // ---------- 日志（GUI 看不到 stdout，全部落盘） ----------
-let logDir = (NSHomeDirectory() as NSString).appendingPathComponent("Library/Logs/LocalNotes")
+let logDir = (NSHomeDirectory() as NSString).appendingPathComponent("Library/Logs/GreenNotes")
 try? FileManager.default.createDirectory(atPath: logDir, withIntermediateDirectories: true)
 let logPath = (logDir as NSString).appendingPathComponent("app.log")
 func logLine(_ s: String) {
@@ -32,9 +32,25 @@ let exeDir = URL(fileURLWithPath: CommandLine.arguments[0])
     .deletingLastPathComponent()         // .../Contents
     .appendingPathComponent("Resources")
 let appDir = exeDir.appendingPathComponent("app")                 // server.py + static + importers
-let dataDir = (NSHomeDirectory() as NSString)
-    .appendingPathComponent("Library/Application Support/LocalNotes")
-try? FileManager.default.createDirectory(atPath: dataDir, withIntermediateDirectories: true)
+
+// ---------- 数据目录 ----------
+// 1.3 把 App 从 LocalNotes 改名 GreenNotes，数据目录随之改名。
+// 老用户升级时这里做一次性搬运：新目录不存在、旧目录存在 → **复制**过去（不是 move，
+// 旧目录留着当备份，45MB 量级，复制不到一秒）。复制失败就继续用旧目录，绝不阻断启动。
+let supportDir = (NSHomeDirectory() as NSString).appendingPathComponent("Library/Application Support")
+var dataDir = (supportDir as NSString).appendingPathComponent("GreenNotes")
+let legacyDataDir = (supportDir as NSString).appendingPathComponent("LocalNotes")
+let fm = FileManager.default
+if !fm.fileExists(atPath: dataDir), fm.fileExists(atPath: legacyDataDir) {
+    do {
+        try fm.copyItem(atPath: legacyDataDir, toPath: dataDir)
+        logLine("已把数据从 LocalNotes 复制到 GreenNotes（旧目录保留作备份）")
+    } catch {
+        logLine("数据迁移失败，继续使用旧目录: \(error.localizedDescription)")
+        dataDir = legacyDataDir
+    }
+}
+try? fm.createDirectory(atPath: dataDir, withIntermediateDirectories: true)
 
 func findPython() -> String? {
     let fm = FileManager.default
@@ -102,8 +118,8 @@ proc.executableURL = URL(fileURLWithPath: py)
 proc.arguments = ["-B", appDir.appendingPathComponent("server.py").path, "--port", String(port), "--parent", String(getpid())]
 proc.currentDirectoryURL = appDir
 var env = ProcessInfo.processInfo.environment
-env["LOCALNOTES_DATA"] = dataDir
-env["LOCALNOTES_PORT"] = String(port)
+env["GREENNOTES_DATA"] = dataDir
+env["GREENNOTES_PORT"] = String(port)
 env["PYTHONDONTWRITEBYTECODE"] = "1"
 proc.environment = env
 if let fh = FileHandle(forWritingAtPath: serverLog) {
@@ -305,7 +321,7 @@ let win = NSWindow(
     contentRect: NSRect(x: 0, y: 0, width: 1120, height: 740),
     styleMask: [.titled, .closable, .miniaturizable, .resizable],
     backing: .buffered, defer: false)
-win.title = "离线笔记本"
+win.title = "GreenNotes"
 win.center()
 
 let webView = WKWebView(frame: win.contentView!.bounds)
@@ -353,11 +369,11 @@ func buildMainMenu() {
     main.addItem(appItem)
     let appMenu = NSMenu()
     appItem.submenu = appMenu
-    appMenu.addItem(withTitle: "关于 离线笔记本",
+    appMenu.addItem(withTitle: "关于 GreenNotes",
                     action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
                     keyEquivalent: "")
     appMenu.addItem(.separator())
-    appMenu.addItem(withTitle: "隐藏 离线笔记本",
+    appMenu.addItem(withTitle: "隐藏 GreenNotes",
                     action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
     let hideOthers = appMenu.addItem(withTitle: "隐藏其他",
                                      action: #selector(NSApplication.hideOtherApplications(_:)),
@@ -366,7 +382,7 @@ func buildMainMenu() {
     appMenu.addItem(withTitle: "显示全部",
                     action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
     appMenu.addItem(.separator())
-    appMenu.addItem(withTitle: "退出 离线笔记本",
+    appMenu.addItem(withTitle: "退出 GreenNotes",
                     action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
     // --- 文件菜单 ---

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# 把 LocalNotes.app 打成可直接分发的 dmg（拖进「应用程序」即完成安装）
+# 把 GreenNotes.app 打成可直接分发的 dmg（拖进「应用程序」即完成安装）
 #   bash make_dmg.sh            默认版本号取 Info.plist
 #   VERSION=1.1 bash make_dmg.sh
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-APP="$HERE/LocalNotes.app"
+APP="$HERE/GreenNotes.app"
 DIST="$HERE/dist"
 VER="${VERSION:-$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$HERE/Info.plist" 2>/dev/null || echo 1.0)}"
-VOL="离线笔记本 ${VER}"
-OUT="$DIST/LocalNotes-${VER}.dmg"
+VOL="GreenNotes ${VER}"
+OUT="$DIST/GreenNotes-${VER}.dmg"
 
 [ -d "$APP" ] || { echo "✗ 找不到 $APP，先跑 bash build.sh"; exit 1; }
 mkdir -p "$DIST"
@@ -27,23 +27,23 @@ echo "  签名有效（ad-hoc）"
 STAGE="$(mktemp -d /tmp/localnotes-dmg.XXXXXX)"
 trap 'rm -rf "$STAGE"' EXIT
 echo "→ 组装暂存目录 $STAGE"
-/usr/bin/ditto "$APP" "$STAGE/LocalNotes.app"
+/usr/bin/ditto "$APP" "$STAGE/GreenNotes.app"
 ln -s /Applications "$STAGE/Applications"
 cat > "$STAGE/安装说明.txt" <<'TXT'
-离线笔记本 LocalNotes · 安装说明
+GreenNotes · 安装说明
 ──────────────────────────────────────
 【安装】
-  把左边的 LocalNotes.app 拖到右边的 Applications 文件夹，
+  把左边的 GreenNotes.app 拖到右边的 Applications 文件夹，
   然后在「启动台 / 应用程序」里打开它。
 
 【第一次打开被系统拦住怎么办】
   这个 App 没有 Apple 付费开发者证书，第一次会被 Gatekeeper 拦一下：
-    · 在「应用程序」里 **右键点 LocalNotes → 打开 → 再点「打开」**，以后就不会再问。
+    · 在「应用程序」里 **右键点 GreenNotes → 打开 → 再点「打开」**，以后就不会再问。
     · 若提示「已损坏，无法打开」，打开「终端」执行下面这行再打开：
-        xattr -dr com.apple.quarantine /Applications/LocalNotes.app
+        xattr -dr com.apple.quarantine /Applications/GreenNotes.app
 
 【数据在哪】
-  所有笔记都在本机：~/Library/Application Support/LocalNotes
+  所有笔记都在本机：~/Library/Application Support/GreenNotes
   （删除 App 不会删笔记；换电脑迁移时，把这个文件夹一起拷过去即可。）
 
 【系统要求】

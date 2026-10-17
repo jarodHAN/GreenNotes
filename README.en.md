@@ -10,7 +10,7 @@ your whole notebook moves with you.
   <img alt="platform" src="https://img.shields.io/badge/macOS-11%2B-000000?logo=apple&logoColor=white">
   <img alt="arch" src="https://img.shields.io/badge/universal-x86__64%20%7C%20arm64-00a82d">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-00a82d">
-  <img alt="version" src="https://img.shields.io/badge/version-1.2-00a82d">
+  <img alt="version" src="https://img.shields.io/badge/version-1.3-00a82d">
   <img alt="deps" src="https://img.shields.io/badge/dependencies-none-00a82d">
 </p>
 
@@ -22,18 +22,18 @@ your whole notebook moves with you.
 
 ## Download & install
 
-**[⬇ Download LocalNotes-1.2.dmg](https://github.com/jarodHAN/GreenNotes/releases/latest)** (18 MB, runtime included)
+**[⬇ Download GreenNotes-1.3.dmg](https://github.com/jarodHAN/GreenNotes/releases/latest)** (18 MB, runtime included)
 
-Also committed in the repo: [`dist/LocalNotes-1.2.dmg`](dist/LocalNotes-1.2.dmg)
+Also committed in the repo: [`dist/GreenNotes-1.3.dmg`](dist/GreenNotes-1.3.dmg)
 
-1. Open the dmg and drag `LocalNotes.app` into `Applications`
-2. **First launch:** in Applications, **right-click LocalNotes → Open → Open** again.
+1. Open the dmg and drag `GreenNotes.app` into `Applications`
+2. **First launch:** in Applications, **right-click GreenNotes → Open → Open** again.
    The app is ad-hoc signed (no paid Apple Developer certificate), so Gatekeeper blocks it once.
    That is expected — the file is not corrupted.
 3. If macOS says the app "is damaged", run this once and open it again:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/LocalNotes.app
+xattr -dr com.apple.quarantine /Applications/GreenNotes.app
 ```
 
 **Requirements:** macOS 11 (Big Sur) or newer. Runs natively on both Intel and Apple Silicon
@@ -43,12 +43,13 @@ Python 3.13.16 runtime ships inside the bundle.
 Verify the download:
 
 ```bash
-shasum -a 256 LocalNotes-1.2.dmg
-# 4f44efe8b2d3e13c8e1a15d13c761bb11f006e25b3b77955ba015e69bc1eebc3
+shasum -a 256 GreenNotes-1.3.dmg
+# 5431b4642c462dc05d192924a0ab95f1b353529afc2bc9351bbae5989b43ea50
 ```
 
-> The bundle is named `LocalNotes.app` (early codename); the project is GreenNotes, named after the
-> UI accent colour `#00a82d`.
+> **As of 1.3 the bundle is named `GreenNotes.app`** (it was `LocalNotes.app` through 1.2).
+> On upgrade, your notes are copied automatically from `~/Library/Application Support/LocalNotes/`
+> to `…/GreenNotes/`; the old folder is kept as a backup, nothing is deleted.
 
 ---
 
@@ -129,7 +130,7 @@ empty names and duplicate notebook names.
 
 | | |
 |---|---|
-| Location | `~/Library/Application Support/LocalNotes/` (`notes.db` + `assets/`) |
+| Location | `~/Library/Application Support/GreenNotes/` (`notes.db` + `assets/`) |
 | Network | **None outbound.** The app starts a local server on `127.0.0.1` at a random port just to render its own window. No public listener, no external requests, no telemetry |
 | Migration | Copy that folder to the same path on the new machine |
 | Uninstall | Deleting the app leaves your notes alone; delete the data folder to wipe |
@@ -152,8 +153,8 @@ python3 app/server.py          # http://127.0.0.1:8731
 Open that URL in a browser and you get the full UI (handy for frontend work).
 
 ```bash
-LOCALNOTES_DATA=/tmp/mynotes   # alternate data dir (never touch real notes while debugging)
-LOCALNOTES_PORT=8899           # fixed port
+GREENNOTES_DATA=/tmp/mynotes   # alternate data dir (never touch real notes while debugging)
+GREENNOTES_PORT=8899           # fixed port
 ```
 
 On first run against an empty database, `app/sample.enex` seeds three demo notes.
@@ -168,12 +169,13 @@ project, no npm.
 ```bash
 bash desktop_app/build.sh        # builds .app: universal binary, embedded runtime, ad-hoc signing, self-checks
 bash desktop_app/make_dmg.sh     # packages a distributable dmg
-VERSION=1.2 bash desktop_app/make_dmg.sh   # different version
+VERSION=1.3 bash desktop_app/make_dmg.sh   # different version
 ```
 
 `build.sh` ends with a hard gate — it exits non-zero unless all of these hold: embedded runtime
-present, `importers` present, frontend present, signature valid, and **no local data**
-(`notes.db` / `assets/`) inside the bundle.
+present, `importers` present, frontend present, signature valid, **no local data**
+(`notes.db` / `assets/`) inside the bundle, no `__pycache__` / `.pyc`, and no nested duplicate
+`importers/importers` copy.
 
 ### Embedded Python runtime (needed for distribution, optional for local use)
 
@@ -219,7 +221,7 @@ GreenNotes/
 │   ├── Info.plist
 │   ├── build.sh  make_dmg.sh  build_runtime.py
 │   ├── make_icon.py  icon_lib.py  icon_variants.py  AppIcon.png
-├── dist/LocalNotes-1.2.dmg
+├── dist/GreenNotes-1.3.dmg
 └── docs/images/
 ```
 

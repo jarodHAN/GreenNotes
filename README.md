@@ -12,7 +12,7 @@
   <img alt="platform" src="https://img.shields.io/badge/macOS-11%2B-000000?logo=apple&logoColor=white">
   <img alt="arch" src="https://img.shields.io/badge/universal-x86__64%20%7C%20arm64-00a82d">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-00a82d">
-  <img alt="version" src="https://img.shields.io/badge/version-1.2-00a82d">
+  <img alt="version" src="https://img.shields.io/badge/version-1.3-00a82d">
   <img alt="deps" src="https://img.shields.io/badge/dependencies-none-00a82d">
 </p>
 
@@ -24,17 +24,17 @@
 
 ## 下载安装
 
-**[⬇ 下载 LocalNotes-1.2.dmg](https://github.com/jarodHAN/GreenNotes/releases/latest)**（18 MB，内嵌运行环境）
+**[⬇ 下载 GreenNotes-1.3.dmg](https://github.com/jarodHAN/GreenNotes/releases/latest)**（18 MB，内嵌运行环境）
 
-也放在仓库里：[`dist/LocalNotes-1.2.dmg`](dist/LocalNotes-1.2.dmg)
+也放在仓库里：[`dist/GreenNotes-1.3.dmg`](dist/GreenNotes-1.3.dmg)
 
-1. 双击 dmg，把 `LocalNotes.app` 拖进 `Applications`
-2. 第一次打开：在「应用程序」里 **右键点 LocalNotes → 打开 → 再点「打开」**
+1. 双击 dmg，把 `GreenNotes.app` 拖进 `Applications`
+2. 第一次打开：在「应用程序」里 **右键点 GreenNotes → 打开 → 再点「打开」**
    （没有付费开发者证书，会被 Gatekeeper 拦一次，这是正常的，不是文件损坏）
 3. 如果提示「已损坏，无法打开」，在终端执行一次再打开：
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/LocalNotes.app
+xattr -dr com.apple.quarantine /Applications/GreenNotes.app
 ```
 
 **系统要求**：macOS 11 (Big Sur) 或更新。Intel 与 Apple Silicon 都能直接跑（通用二进制），
@@ -43,11 +43,12 @@ xattr -dr com.apple.quarantine /Applications/LocalNotes.app
 校验安装包：
 
 ```bash
-shasum -a 256 LocalNotes-1.2.dmg
-# 4f44efe8b2d3e13c8e1a15d13c761bb11f006e25b3b77955ba015e69bc1eebc3
+shasum -a 256 GreenNotes-1.3.dmg
+# 5431b4642c462dc05d192924a0ab95f1b353529afc2bc9351bbae5989b43ea50
 ```
 
-> 应用包名叫 `LocalNotes.app`（早期代号），项目名是 GreenNotes，绿色取自界面主色 `#00a82d`。
+> **1.3 起应用改名为 `GreenNotes.app`**（1.2 及以前叫 `LocalNotes.app`）。升级时旧数据会自动从
+> `~/Library/Application Support/LocalNotes/` 复制到 `…/GreenNotes/`，原目录保留作备份，不会丢笔记。
 
 ---
 
@@ -123,7 +124,7 @@ Markdown 适合给别的编辑器打开，ENEX 是印象笔记/Evernote 的交�
 
 | | |
 |---|---|
-| 数据位置 | `~/Library/Application Support/LocalNotes/`（`notes.db` + `assets/`） |
+| 数据位置 | `~/Library/Application Support/GreenNotes/`（`notes.db` + `assets/`） |
 | 网络 | **零外联**。App 只在本机 `127.0.0.1` 起一个随机端口的本地服务供窗口显示，不监听公网、不请求任何外部地址、无遥测 |
 | 迁移 | 拷走上面整个文件夹，在新机器上放回同一位置即可 |
 | 卸载 | 删 App 不删笔记；要彻底清空需手动删数据目录 |
@@ -148,8 +149,8 @@ python3 app/server.py          # 默认 http://127.0.0.1:8731
 可选环境变量：
 
 ```bash
-LOCALNOTES_DATA=/tmp/mynotes   # 换数据目录（不影响正式数据，调试必备）
-LOCALNOTES_PORT=8899           # 固定端口
+GREENNOTES_DATA=/tmp/mynotes   # 换数据目录（不影响正式数据，调试必备）
+GREENNOTES_PORT=8899           # 固定端口
 ```
 
 首次启动如果库是空的，会用 `app/sample.enex` 播种 3 篇示例笔记（全部是中性演示内容）。
@@ -168,11 +169,12 @@ bash desktop_app/build.sh
 bash desktop_app/make_dmg.sh
 
 # 换版本号
-VERSION=1.2 bash desktop_app/make_dmg.sh
+VERSION=1.3 bash desktop_app/make_dmg.sh
 ```
 
-`build.sh` 结束会做自检，四条任一不满足直接失败退出：内嵌运行时存在、`importers` 存在、
-前端页面存在、签名有效，且包内**不含**本地数据（`notes.db` / `assets`）。
+`build.sh` 结束会做自检，七条任一不满足直接失败退出：内嵌运行时存在、`importers` 存在、
+前端页面存在、签名有效、包内**不含**本地数据（`notes.db` / `assets`）、没有 `__pycache__` / `.pyc`、
+没有嵌套的 `importers/importers` 副本。
 
 ### 内嵌 Python 运行时（可选，但 dmg 分发必须）
 
@@ -220,7 +222,7 @@ GreenNotes/
 │   ├── build_runtime.py     # 双架构运行时合并 + 裁剪
 │   ├── make_icon.py  icon_lib.py  icon_variants.py  # 图标生成
 │   └── AppIcon.png
-├── dist/LocalNotes-1.2.dmg  # 可直接分发的安装包
+├── dist/GreenNotes-1.3.dmg  # 可直接分发的安装包
 └── docs/images/             # 截图
 ```
 

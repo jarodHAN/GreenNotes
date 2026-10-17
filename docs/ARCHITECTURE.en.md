@@ -10,7 +10,7 @@ when you change something.
 ## 1. Overall shape
 
 ```
-┌──────────────────────── LocalNotes.app ────────────────────────┐
+┌──────────────────────── GreenNotes.app ────────────────────────┐
 │  Main thread            Swift shell (WKWebView)                 │
 │    ├─ pick a port → spawn the child process                     │
 │    ├─ NSMenu (copy / paste / export via the responder chain)    │
@@ -20,7 +20,7 @@ when you change something.
 │  Python child process   app/server.py                           │
 │    ├─ ThreadingHTTPServer(127.0.0.1, port)                      │
 │    ├─ routes /api/*                                             │
-│    ├─ SQLite: ~/Library/Application Support/LocalNotes/notes.db │
+│    ├─ SQLite: ~/Library/Application Support/GreenNotes/notes.db │
 │    └─ assets/  attachments on disk                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -163,12 +163,12 @@ zebra rows). On the way out, `_MDConverter` already emits GFM table syntax.
 ```
 app/ + importers/  ──rsync(exclude pyc/db/assets)──┐
 desktop_app/AppIcon.png ──sips/iconutil──► AppIcon.icns │
-shell/main.swift ──swiftc ×2 (x86_64/arm64)──lipo──► LocalNotes │
+shell/main.swift ──swiftc ×2 (x86_64/arm64)──lipo──► GreenNotes │
 runtime/python (optional) ─────────────────────────────┘
                                     │
-                              ../LocalNotes.app
+                              ../GreenNotes.app
                                     │
-                          make_dmg.sh ──► dist/LocalNotes-x.y.dmg
+                          make_dmg.sh ──► dist/GreenNotes-x.y.dmg
 ```
 
 The self-check at the end of `build.sh` is a hard gate: any failed condition means `exit 1`.
@@ -208,6 +208,12 @@ Result: 32 MB for one architecture, 44 MB for both, 18 MB as a dmg.
 | `PYTHONDONTWRITEBYTECODE=1` + `-B` | Python writes `__pycache__` into the bundle, which breaks the code-signing seal instantly; a second launch on another machine may then report the app as damaged |
 | Data directory in `Application Support` | Inside the bundle, moving or upgrading the app would take all your notes with it |
 
+> **Renamed in 1.3**: the bundle is `GreenNotes.app` and the data directory is
+> `…/Application Support/GreenNotes/`. Users upgrading from 1.2 or earlier (which used `LocalNotes`)
+> are migrated at launch: if the new directory is missing and the old one exists, the old folder is
+> **copied** over and kept as a backup; if the copy fails the shell keeps using the old directory
+> rather than refusing to start. Copy, not move — a failed move would leave the user with no second copy.
+
 Also: `NSAllowsLocalNetworking` must be enabled in Info.plist, otherwise tighter ATS settings will
 later block the loopback requests.
 
@@ -221,8 +227,12 @@ but the artifact was broken":
 1. **Bulk-delete protection.** The environment intercepts operations that delete a large number of
    files at once. `rm -rf` on an `iconset` directory with hundreds of PNGs → intercepted → `set -e`
    aborts → the whole "embed runtime + sign" section is skipped → an unsigned bundle is produced.
+   The same trap bit again later with `rm -rf "$RES/python"` (549 files): the build died at "embed
+   runtime" and never even copied it in.
    Countermeasure: temp dirs are always `mktemp -d /tmp/...` and are **never deleted** (the system
-   cleans them), and never invoke the build as `bash build.sh | tail`, which swallows the exit code.
+   cleans them); directories that must be wiped before copying are `mv`-ed to `/tmp` and then
+   `ditto`-ed over; and never invoke the build as `bash build.sh | tail`, which swallows the exit
+   code (the pipeline reports `tail`'s status).
 2. **`rsync -a app/` happily copies the developer's `notes.db` and `assets/` into the installer.**
    Shipping that means shipping your own notes. Countermeasure: explicit `--exclude`, enforced as a
    gate in the self-check. It also has to run with `--delete --delete-excluded`: the `.app` is updated

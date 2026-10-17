@@ -9,7 +9,7 @@
 ## 1. 整体形态
 
 ```
-┌──────────────────────── LocalNotes.app ────────────────────────┐
+┌──────────────────────── GreenNotes.app ────────────────────────┐
 │  Main Thread            Swift 外壳 (WKWebView)                  │
 │    ├─ 选端口 → 拉起子进程                                        │
 │    ├─ NSMenu（复制/粘贴/导出 走 responder chain）                │
@@ -19,7 +19,7 @@
 │  Python 子进程  app/server.py                                   │
 │    ├─ ThreadingHTTPServer(127.0.0.1, port)                      │
 │    ├─ 路由 /api/*                                               │
-│    ├─ SQLite: ~/Library/Application Support/LocalNotes/notes.db │
+│    ├─ SQLite: ~/Library/Application Support/GreenNotes/notes.db │
 │    └─ assets/ 附件落盘                                           │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -138,12 +138,12 @@ Markdown 不是第二套存储，而是 HTML 的另一种视图：
 ```
 app/ + importers/  ──rsync(排除 pyc/db/assets)──┐
 desktop_app/AppIcon.png ──sips/iconutil──► AppIcon.icns │
-shell/main.swift ──swiftc ×2 (x86_64/arm64)──lipo──► LocalNotes │
+shell/main.swift ──swiftc ×2 (x86_64/arm64)──lipo──► GreenNotes │
 runtime/python (可选) ─────────────────────────────┘
                                     │
-                              ../LocalNotes.app
+                              ../GreenNotes.app
                                     │
-                          make_dmg.sh ──► dist/LocalNotes-x.y.dmg
+                          make_dmg.sh ──► dist/GreenNotes-x.y.dmg
 ```
 
 收尾自检（`build.sh` 末尾）是硬门禁，任一条不满足就 `exit 1`：
@@ -181,6 +181,11 @@ python-build-standalone 的 `install_only_stripped` 两个架构解包后：
 | `PYTHONDONTWRITEBYTECODE=1` + `-B` | Python 往包内写 `__pycache__`，代码签名封条立刻失效，别的机器二次打开可能提示「已损坏」 |
 | 数据目录放 `Application Support` | 放 App 包内的话，App 一移动/升级，笔记就没了 |
 
+> **1.3 起改名**：包是 `GreenNotes.app`，数据目录是 `…/Application Support/GreenNotes/`。
+> 老用户（1.2 及以前用 `LocalNotes`）升级时，外壳在启动阶段检测到新目录不存在、旧目录存在，
+> 就整份**复制**过去并保留旧目录；复制失败则回退继续用旧目录，绝不阻断启动。
+> 这里刻意用 copy 而不是 move：move 中途失败就没有第二份数据了。
+
 另外：`NSAllowsLocalNetworking` 要在 Info.plist 里打开，否则将来收紧 ATS 时本机回环请求会被拦。
 
 ---
@@ -191,8 +196,10 @@ python-build-standalone 的 `install_only_stripped` 两个架构解包后：
 
 1. **批量删除保护**：环境会拦截一次删除大量文件的操作。脚本里 `rm -rf` 一个含几百张 png 的
    `iconset` 目录 → 被拦截 → `set -e` 中断 → 后续「内嵌运行时 + 签名」整段跳过 → 打出未签名包。
-   对策：临时目录一律 `mktemp -d /tmp/...` 且**不删**（系统会清），
-   并且外层不要用 `bash build.sh | tail` 这种把退出码吃掉的方式调用。
+   同一个坑后来又踩了一次：`rm -rf "$RES/python"`（549 个文件）同样被拦，断在「内嵌运行时」，
+   连运行时都没拷进去。对策：临时目录一律 `mktemp -d /tmp/...` 且**不删**（系统会清），
+   需要「清空再覆盖」的目录改成 `mv` 到 `/tmp` 再用 `ditto` 拷；
+   并且外层不要用 `bash build.sh | tail` 这种把退出码吃掉的方式调用（管道退出码是 `tail` 的）。
 2. **`rsync -a app/` 会把开发者本地的 `notes.db`、`assets/` 一起打进安装包**。
    分发给别人就等于把自己的笔记发出去了。对策：显式 `--exclude`，并在自检里当门禁查。
    另外必须是 `--delete --delete-excluded`：`.app` 是原地更新的，旧版本留下的空 `__pycache__`、

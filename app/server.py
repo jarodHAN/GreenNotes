@@ -33,14 +33,25 @@ from exporter import (note_markdown, note_enex, notebook_markdown, notebook_enex
                       html_to_markdown)
 # 数据目录：优先用环境变量（打包 App 时由外壳注入），否则落到用户支持目录，
 # 这样 App 包被移动也不会丢数据（见 macos-native-webapp-package 坑 5）。
-DATA_DIR = os.environ.get("LOCALNOTES_DATA") or os.path.join(
-    os.path.expanduser("~/Library/Application Support/LocalNotes"))
+# 1.3 起 App 改名 GreenNotes，目录也跟着改；外壳会把旧的 LocalNotes 目录复制过来，
+# 这里的 LOCALNOTES_* 只作兜底兼容（老外壳注入的旧变量名 / 老文档里的调试命令）。
+def _default_data_dir():
+    support = os.path.expanduser("~/Library/Application Support")
+    new = os.path.join(support, "GreenNotes")
+    old = os.path.join(support, "LocalNotes")
+    if not os.path.isdir(new) and os.path.isdir(old):
+        return old          # 还没迁移过（例如直接 python3 app/server.py 调试）
+    return new
+
+DATA_DIR = (os.environ.get("GREENNOTES_DATA")
+            or os.environ.get("LOCALNOTES_DATA")
+            or _default_data_dir())
 os.makedirs(DATA_DIR, exist_ok=True)
 DB = os.path.join(DATA_DIR, "notes.db")
 ASSETS = os.path.join(DATA_DIR, "assets")
 SAMPLE = os.path.join(ROOT, "sample.enex")   # 打包时一并拷进 Resources/app/
 INDEX = os.path.join(ROOT, "static", "index.html")
-PORT = int(os.environ.get("LOCALNOTES_PORT", "8731"))
+PORT = int(os.environ.get("GREENNOTES_PORT") or os.environ.get("LOCALNOTES_PORT") or "8731")
 
 ensure_schema(DB)
 os.makedirs(ASSETS, exist_ok=True)

@@ -351,7 +351,7 @@ def _wrap_enex(notes_xml):
     return (
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         "<!DOCTYPE en-export SYSTEM \"http://xml.evernote.com/pub/evernote-export4.dtd\">\n"
-        f"<en-export export-date=\"{stamp}\" application=\"LocalNotes\" version=\"1.0\">\n"
+        f"<en-export export-date=\"{stamp}\" application=\"GreenNotes\" version=\"1.0\">\n"
         f"{notes_xml}\n"
         "</en-export>"
     )

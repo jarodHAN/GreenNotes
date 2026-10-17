@@ -2,6 +2,29 @@
 
 版本号跟随 `desktop_app/Info.plist` 的 `CFBundleShortVersionString`。
 
+## 1.3 — 2026-10-18
+
+**应用改名为 GreenNotes**
+
+- 包名 `LocalNotes.app` → **`GreenNotes.app`**，可执行文件、窗口标题、⌘ 菜单（关于 / 隐藏 / 退出）、
+  页面标题与顶栏 Logo 全部统一成 GreenNotes
+- Bundle ID `com.localnotes.app` → `com.greennotes.app`；安装包 `LocalNotes-1.2.dmg` → `GreenNotes-1.3.dmg`
+  （卷名、安装说明里的路径与 Gatekeeper 提示一并更新）；ENEX 导出头 `application="GreenNotes"`
+- 数据目录 `~/Library/Application Support/LocalNotes/` → `…/GreenNotes/`，日志目录同理
+- 环境变量 `LOCALNOTES_DATA` / `LOCALNOTES_PORT` → `GREENNOTES_DATA` / `GREENNOTES_PORT`
+  （后端仍兼容旧名，老脚本不会突然失效）
+
+**升级不会丢笔记**
+
+- 首次启动 1.3 时，如果新数据目录不存在而旧目录存在，会自动把整个旧目录**复制**过去，
+  旧目录原样保留作备份；复制失败则回退继续使用旧目录，不影响启动
+
+**构建链修复**
+
+- `build.sh` 不再用 `rm -rf` 清理内嵌运行时（500+ 文件会触发批量删除保护，导致脚本中途退出、
+  产出一个没签名的包），改为先 `mv` 到 `/tmp` 再覆盖拷贝
+- README 补上收尾自检的完整七条门禁
+
 ## 1.2 — 2026-10-17
 
 **新增 Markdown 实时预览**
