@@ -15,6 +15,8 @@
 
 ![主界面](docs/images/main.png)
 
+*[English →](README.en.md)*
+
 ---
 
 ## 下载安装
