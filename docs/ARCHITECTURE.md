@@ -94,6 +94,18 @@ INSERT INTO notes_fts(rowid, title, content_text) SELECT id, title, content_text
 `<en-media>`（图片渲染成图，其他类型在 Evernote 里就是附件）。反方向导入时同理，
 以前非图片也被写成 `<img>`，PDF 会变成裂图，现在按 mime 分开处理。
 
+**新笔记不必先保存**：附件接口是挂在笔记 id 上的，而「刚点新建、还没存过」的笔记没有 id。
+前端在 `addFiles()` 里先调 `ensureNote()`：用当前标题/正文静默 `POST /api/note` 建一篇，
+**只把返回的 id 补回 `state.currentNote`，不调 `openNote()`**——否则编辑器和光标会被重置。
+之后照常上传附件、`saveSilently()` 把引用写回正文。
+
+**删除单个附件**：`POST /api/note/<id>/detach {url}` 只删 `resources` 里这一篇的登记，
+然后做两道检查——全库还有没有别的 `resources` 行指向同一个文件、还有没有别的笔记正文里写着这个名字；
+都没有才删磁盘副本（多篇笔记上传同一个文件会落到同一路径，不能连带删掉别人的）。
+前端顺序很关键：**先移除正文节点并保存，再调 detach**，否则后端查到正文里还写着这个文件，永远不敢删。
+UI 上卡片用 `<a class="attach">` 内的 `<span class="del">✕</span>`；图片则用一层浮动的
+`#imgDel`（不写进正文 HTML，避免污染可编辑内容与导出结果），鼠标悬停时按 `getBoundingClientRect` 定位。
+
 ---
 
 ## 3. 前端：一个文件，零构建
@@ -123,6 +135,19 @@ Markdown 不是第二套存储，而是 HTML 的另一种视图：
   最终落库的永远是服务端转换的结果，避免两套渲染器逐渐跑偏
 
 这么设计的好处：搜索（`content_text`）、导出 ENEX、导入其它格式全部不用改。
+
+### 自动存档
+
+`setInterval(autoSave, 60000)` + `visibilitychange`（切走/最小化/锁屏时立即存一次）。
+两个容易踩的点：
+
+- **脏判断不能用「编辑器 HTML vs 服务端返回的 HTML」**：浏览器的 `innerHTML` 序列化与
+  `sanitize_html()` 的输出天然有差异（属性顺序、`<br>` 写法），这样比会永远判定为「改过」，
+  于是每分钟都白写一次库、把 `updated` 时间戳刷掉。正确做法是保存成功后记一份**编辑器快照**
+  （`markClean()`：标题 + `edContent.innerHTML` + `mdSrc`），之后拿当前值和快照比。
+- 只把 id 补进 `state.currentNote`、不重载编辑器，否则自动保存会打断输入。
+
+未保存的新笔记也会走 `ensureNote()` 建档——这正是「写了一半没保存就崩溃/关机」最容易丢的场景。
 
 ### 表格
 

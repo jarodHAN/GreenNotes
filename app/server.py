@@ -235,7 +235,10 @@ def do_import_path(path, notebook_name=None):
 
 
 def strip_text(html_str):
-    t = re.sub(r"<br\s*/?>", "\n", html_str or "")
+    # 先去掉附件卡片上的 UI 装饰（体积文字、删除按钮），别让它们进索引和摘要
+    t = re.sub(r'<span[^>]*class="[^"]*\b(?:sz|del)\b[^"]*"[^>]*>.*?</span>', '',
+               html_str or "", flags=re.S | re.I)
+    t = re.sub(r"<br\s*/?>", "\n", t)
     t = re.sub(r"</(p|div|li|h[1-6]|tr|td|th)>", "\n", t)
     t = re.sub(r"<[^>]+>", "", t)
     return _html.unescape(t).strip()
@@ -280,6 +283,44 @@ def attach_file(nid, filename, data):
     con.commit(); con.close()
     return {"ok": True, "filename": fn, "name": orig, "url": "assets/" + fn,
             "mime": mime, "size": len(data), "image": mime.startswith("image/")}, 200
+
+def detach_file(nid, url):
+    """删除一篇笔记里某个附件的登记。
+    只有当**全库再没有任何地方**引用这个文件时，才把磁盘上的副本删掉
+    （多篇笔记上传同一个文件会命中同一路径，不能连带删掉别人的）。
+    正文里那条引用由前端负责移除，这里只管资源和文件。"""
+    rel = os.path.basename((url or "").replace("\\", "/"))
+    if not rel or rel.startswith(".") or "/" in rel:
+        return {"error": "附件地址不合法"}, 400
+    con = _con(); cur = con.cursor()
+    if not cur.execute("SELECT id FROM notes WHERE id=?", (nid,)).fetchone():
+        con.close()
+        return {"error": "笔记不存在"}, 404
+    # 找到这篇笔记里指向同一文件的所有 resource 行（local_path 的最后一段就是文件名）
+    ids = [r[0] for r in cur.execute(
+        "SELECT id, local_path FROM resources WHERE note_id=?", (nid,))
+        if os.path.basename(r[1] or "") == rel]
+    for rid in ids:
+        cur.execute("DELETE FROM resources WHERE id=?", (rid,))
+    con.commit()
+
+    # 还有别的笔记登记着它吗？还有笔记正文里写着这个名字吗？
+    left = [r for r in cur.execute("SELECT local_path FROM resources")
+            if os.path.basename(r[0] or "") == rel]
+    used = cur.execute("SELECT COUNT(*) FROM notes WHERE content_html LIKE ?",
+                       ("%" + rel + "%",)).fetchone()[0]
+    removed = False
+    if not left and not used:
+        path = os.path.join(ASSETS, rel)
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+                removed = True
+            except OSError:
+                pass
+    con.close()
+    return {"ok": True, "removed_rows": len(ids), "removed_file": removed}, 200
+
 
 def create_notebook(name):
     con = _con(); cur = con.cursor()
@@ -498,6 +539,14 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 self._send(400, {"error": "base64 解析失败"}); return
             res, code = attach_file(nid, payload.get("filename"), blob)
+            self._send(code, res)
+        elif p.path.startswith("/api/note/") and p.path.endswith("/detach"):
+            # 删除单个附件：POST /api/note/<id>/detach  {url:"assets/x.pdf"}
+            try:
+                nid = int(p.path.split("/")[3])
+            except (IndexError, ValueError):
+                self._send(400, {"error": "bad note id"}); return
+            res, code = detach_file(nid, payload.get("url"))
             self._send(code, res)
         elif p.path == "/api/notebook":
             nid = create_notebook(payload.get("name", "未命名笔记本"))

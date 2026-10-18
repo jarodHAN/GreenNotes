@@ -227,9 +227,9 @@ def _render_table(rows):
 def html_to_markdown(html):
     if not html:
         return ""
-    # 附件卡片末尾的「12.4 KB」是 <span class="sz"> 里的展示文字，属于 UI 装饰，
-    # 不进 Markdown，否则会变成 [📎 设计稿.pdf12.4 KB](assets/…)
-    html = re.sub(r'<span[^>]*class="[^"]*\bsz\b[^"]*"[^>]*>.*?</span>', '',
+    # 附件卡片末尾的「12.4 KB」（span.sz）和删除按钮「✕」（span.del）都是 UI 装饰，
+    # 不进 Markdown，否则会变成 [📎 设计稿.pdf12.4 KB✕](assets/…)
+    html = re.sub(r'<span[^>]*class="[^"]*\b(?:sz|del)\b[^"]*"[^>]*>.*?</span>', '',
                   html, flags=re.S | re.I)
     c = _MDConverter()
     try:

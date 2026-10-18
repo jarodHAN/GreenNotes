@@ -10,7 +10,7 @@ your whole notebook moves with you.
   <img alt="platform" src="https://img.shields.io/badge/macOS-11%2B-000000?logo=apple&logoColor=white">
   <img alt="arch" src="https://img.shields.io/badge/universal-x86__64%20%7C%20arm64-00a82d">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-00a82d">
-  <img alt="version" src="https://img.shields.io/badge/version-1.3-00a82d">
+  <img alt="version" src="https://img.shields.io/badge/version-1.4-00a82d">
   <img alt="deps" src="https://img.shields.io/badge/dependencies-none-00a82d">
 </p>
 
@@ -22,9 +22,9 @@ your whole notebook moves with you.
 
 ## Download & install
 
-**[⬇ Download GreenNotes-1.3.dmg](https://github.com/jarodHAN/GreenNotes/releases/latest)** (18 MB, runtime included)
+**[⬇ Download GreenNotes-1.4.dmg](https://github.com/jarodHAN/GreenNotes/releases/latest)** (18 MB, runtime included)
 
-Also committed in the repo: [`dist/GreenNotes-1.3.dmg`](dist/GreenNotes-1.3.dmg)
+Also committed in the repo: [`dist/GreenNotes-1.4.dmg`](dist/GreenNotes-1.4.dmg)
 
 1. Open the dmg and drag `GreenNotes.app` into `Applications`
 2. **First launch:** in Applications, **right-click GreenNotes → Open → Open** again.
@@ -43,8 +43,8 @@ Python 3.13.16 runtime ships inside the bundle.
 Verify the download:
 
 ```bash
-shasum -a 256 GreenNotes-1.3.dmg
-# 2ec1c28d634b34eab96cb6d3283b0179a98ba2417f5c56b1c4020241d357eb54
+shasum -a 256 GreenNotes-1.4.dmg
+# d300d610f77d0734d2866341cee461cf4ded3f6f6ee02ed38ef1adaf5bc7f178
 ```
 
 > **As of 1.3 the bundle is named `GreenNotes.app`** (it was `LocalNotes.app` through 1.2).
@@ -59,10 +59,11 @@ shasum -a 256 GreenNotes-1.3.dmg
 |---|---|
 | **Notebooks** | Create, delete, **rename by double-clicking the name**, via the hover pencil `✎`, or the context menu |
 | **Notes** | Create, edit, save (⌘S), delete; separate title and body; list sorted by last update |
+| **Auto-save** | Saves **every 60 seconds** by default, plus whenever the app loses focus; brand-new notes get created automatically |
 | **Rich text** | Bold / italic / underline / monospace / bullet list / numbered list / quote / code / clear formatting |
 | **Markdown** | Switch the toolbar to **Markdown** for a source + live-preview split view; both modes edit the same note (HTML is what gets stored) |
 | **Tables** | Insert a 2×2 – 5×4 table, type straight into cells, Tab moves on; exported Markdown becomes a GFM table |
-| **Attachments** | Drop a file into the body: images render inline, PDF/Office/zip become attachment cards that open in the default app |
+| **Attachments** | Drop a file into the body — **no need to save the note first**: images render inline, PDF/Office/zip become cards; delete one with the `✕` on the card or the `✕` that appears over an image |
 | **Full-text search** | Title + body, Chinese substring search works down to two characters (FTS5 `trigram` with a `LIKE` fallback) |
 | **Import** | Evernote `.enex` (images included), Yinxiang/Youdao HTML exports, Markdown, plain text, Obsidian vaults, whole folders (recursive) |
 | **Export** | One note or a whole notebook → Markdown / ENEX; UTF-8 filenames; saves pending edits first |
@@ -102,6 +103,29 @@ Drop files from Finder anywhere in the body:
 Files land in `assets/` inside the data folder; identical content in the same note is stored once
 (MD5 de-duplication). Clicking a card does not navigate the window — it hands the file to the system
 via a native `NSWorkspace` call. Limit: 25 MB per file.
+
+**No need to save first.** Even a brand-new, never-saved note accepts drops: the app creates the note
+silently in the background first, then attaches the file — the caret and your text are left untouched.
+
+**Deleting a single attachment:**
+
+| Target | How |
+|---|---|
+| Attachment card (PDF / Office / archive…) | The `✕` at its right side, then confirm |
+| An image in the body | Hover it — a `✕` appears at the top-right corner, click and confirm |
+
+This only removes that one reference. If no other note uses the file any more, the copy on disk is
+deleted too; otherwise it stays for the notes that still reference it.
+
+### Auto-save
+
+Every **60 seconds** by default — no ⌘S needed (⌘S still works). It also saves immediately when you
+switch to another app, minimise the window, or lock the screen.
+
+Writes only happen when something actually changed (the editor state is compared against a snapshot
+taken at the last save), so the "updated" timestamp is not bumped every minute.
+The meta line above the editor shows "已自动保存 HH:MM" after each automatic save.
+Notes you created but never saved get created automatically as well.
 
 ### Export
 
@@ -250,6 +274,7 @@ The window is a WKWebView talking to a loopback HTTP server, so everything is sc
 | POST | `/api/import` / `/api/import_path` | import upload / local path |
 | POST | `/api/convert` | HTML ⇄ Markdown `{from:'html'\|'md', text}` |
 | POST | `/api/note/<id>/attach` | upload an attachment `{filename, data(base64)}` |
+| POST | `/api/note/<id>/detach` | remove one attachment `{url}`; deletes the file when nothing else references it |
 | DELETE | `/api/note/<id>` / `/api/notebook/<id>[?force=1]` | delete |
 
 ---

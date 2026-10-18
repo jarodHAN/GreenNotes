@@ -113,6 +113,20 @@ back to `<en-media>` (images render as pictures, other types become attachments 
 does the reverse — previously non-images were also rewritten as `<img>`, so PDFs showed up as broken
 images; now the mime type decides.
 
+**A new note does not have to be saved first.** The attach endpoint hangs off a note id, and a note you
+just created but never saved has none. `addFiles()` therefore calls `ensureNote()` first: it silently
+`POST /api/note`s the current title/body, then **copies the returned id into `state.currentNote`
+without calling `openNote()`** — reloading the editor there would reset the caret and lose your place.
+
+**Deleting a single attachment**: `POST /api/note/<id>/detach {url}` removes just that note's row from
+`resources`, then checks twice — does any other note still register the same file, and does any other
+note's HTML still mention it? Only when both answers are no is the copy on disk removed (two notes
+uploading the same file share one path, and we must not delete someone else's).
+Order matters on the front end: **remove the node and save first, call detach second** — the other way
+round the server sees the reference still in the body and never dares delete the file.
+Cards use a `<span class="del">✕</span>` inside the anchor; images use a floating `#imgDel` element
+positioned with `getBoundingClientRect` so nothing is written into the editable HTML.
+
 ---
 
 ## 3. Front end: one file, zero build
@@ -146,6 +160,22 @@ Rich text (contenteditable)  ──save──►  sanitize ──► notes.conte
   drift apart silently
 
 The payoff: search (`content_text`), ENEX export and every importer keep working untouched.
+
+### Auto-save
+
+`setInterval(autoSave, 60000)` plus `visibilitychange` (save immediately when the app is hidden,
+minimised or the screen locks). Two traps worth knowing:
+
+- **Never compare the editor's HTML against the server's HTML to decide "dirty".** The browser's
+  `innerHTML` serialisation and `sanitize_html()` output differ by nature (attribute order, `<br>`
+  spelling), so that comparison is always true — the app would rewrite the note every minute and keep
+  bumping `updated`. Instead, after a successful save we snapshot the editor (`markClean()`: title +
+  `edContent.innerHTML` + `mdSrc`) and compare against that.
+- Update `state.currentNote` in place rather than reloading the editor, or auto-save will interrupt
+  typing.
+
+Unsaved new notes go through `ensureNote()` too — that is exactly the case where "wrote half a note,
+closed the lid, lost it" happens.
 
 ### Tables
 

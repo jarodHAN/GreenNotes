@@ -12,7 +12,7 @@
   <img alt="platform" src="https://img.shields.io/badge/macOS-11%2B-000000?logo=apple&logoColor=white">
   <img alt="arch" src="https://img.shields.io/badge/universal-x86__64%20%7C%20arm64-00a82d">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-00a82d">
-  <img alt="version" src="https://img.shields.io/badge/version-1.3-00a82d">
+  <img alt="version" src="https://img.shields.io/badge/version-1.4-00a82d">
   <img alt="deps" src="https://img.shields.io/badge/dependencies-none-00a82d">
 </p>
 
@@ -24,9 +24,9 @@
 
 ## 下载安装
 
-**[⬇ 下载 GreenNotes-1.3.dmg](https://github.com/jarodHAN/GreenNotes/releases/latest)**（18 MB，内嵌运行环境）
+**[⬇ 下载 GreenNotes-1.4.dmg](https://github.com/jarodHAN/GreenNotes/releases/latest)**（18 MB，内嵌运行环境）
 
-也放在仓库里：[`dist/GreenNotes-1.3.dmg`](dist/GreenNotes-1.3.dmg)
+也放在仓库里：[`dist/GreenNotes-1.4.dmg`](dist/GreenNotes-1.4.dmg)
 
 1. 双击 dmg，把 `GreenNotes.app` 拖进 `Applications`
 2. 第一次打开：在「应用程序」里 **右键点 GreenNotes → 打开 → 再点「打开」**
@@ -43,8 +43,8 @@ xattr -dr com.apple.quarantine /Applications/GreenNotes.app
 校验安装包：
 
 ```bash
-shasum -a 256 GreenNotes-1.3.dmg
-# 2ec1c28d634b34eab96cb6d3283b0179a98ba2417f5c56b1c4020241d357eb54
+shasum -a 256 GreenNotes-1.4.dmg
+# d300d610f77d0734d2866341cee461cf4ded3f6f6ee02ed38ef1adaf5bc7f178
 ```
 
 > **1.3 起应用改名为 `GreenNotes.app`**（1.2 及以前叫 `LocalNotes.app`）。升级时旧数据会自动从
@@ -58,10 +58,11 @@ shasum -a 256 GreenNotes-1.3.dmg
 |---|---|
 | **笔记本** | 新建、删除；**双击名字直接改名**，或点悬停出现的铅笔 `✎`，或右键菜单 |
 | **笔记** | 新建、编辑、保存（⌘S）、删除；标题与正文分离，列表按更新时间倒序 |
+| **自动存档** | 默认 **每分钟自动保存一次**；切到别的 App / 最小化时也存一次，新笔记没按过保存也会自动建档 |
 | **富文本** | 加粗 / 斜体 / 下划线 / 等宽 / 无序列表 / 有序列表 / 引用 / 代码 / 清除格式 |
 | **Markdown** | 工具栏切到 **Markdown** 后是「源码 + 实时预览」左右分栏，改一个字预览立刻更新；两种模式共用同一份数据（存 HTML） |
 | **表格** | 一键插入 2×2 ~ 5×4 表格，单元格里直接输入，Tab 跳下一格；导出 Markdown 时自动变成 GFM 表格 |
-| **附件** | 把文件拖进正文即可：图片直接显示，PDF/Office/压缩包变成附件卡片，点一下用系统默认程序打开 |
+| **附件** | 把文件拖进正文即可（**不用先保存笔记**）：图片直接显示，PDF/Office/压缩包变成附件卡片；卡片上的 `✕` 或图片右上角的 `✕` 可单独删除 |
 | **全文搜索** | 标题 + 正文一起搜，中文两字也能命中（FTS5 trigram，短词自动回退 LIKE） |
 | **导入** | Evernote `.enex`（含图片附件）、印象笔记/有道云笔记导出的 HTML、Markdown、纯文本、Obsidian 笔记库、普通文件夹批量递归 |
 | **导出** | 单篇或整本笔记本 → Markdown / ENEX；中文标题文件名不乱码；导出前自动保存 |
@@ -98,6 +99,31 @@ Markdown 模式下插入的是 `| 列1 | 列2 |` 模板。表头、斑马纹、�
 附件落在数据目录的 `assets/` 里，同一篇笔记内相同内容只存一份（按 MD5 去重）。
 点附件卡片不会把窗口导航走，而是交给系统用默认程序打开（WKWebView 里的原生 `NSWorkspace` 调用）。
 单个文件上限 25 MB。
+
+**不用先保存笔记**：即使是刚点「新建笔记」、还没存过的空白笔记，也可以直接把文件拖进去——
+App 会在后台先把这篇笔记静默建好，再挂上附件，光标和正文都不会被打断。
+
+**单独删除附件**：
+
+| 对象 | 怎么删 |
+|---|---|
+| 附件卡片（PDF / Office / 压缩包…） | 卡片右侧的 `✕`，确认后从正文移除 |
+| 正文里的图片 | 鼠标移到图片上，右上角出现 `✕`，点它确认删除 |
+
+删除只会动这一处引用；**如果全库没有其它笔记再用这个文件，磁盘上的副本会一起清掉**，
+否则文件会保留给还在用它的笔记。
+
+### 自动存档
+
+默认每 **1 分钟**自动保存一次，不需要手动 ⌘S（⌘S 依然可用）。
+另外两种情况也会立刻存一次：
+
+- 切到别的 App、最小化窗口、锁屏（`visibilitychange`）
+- 关闭编辑器前处于「有改动」状态
+
+只有内容真的变了才会写库（比较的是上一次保存时的编辑器快照），所以不会每分钟无意义地刷新「更新时间」。
+自动保存成功后，编辑区上方那行元信息里会出现「已自动保存 HH:MM」。
+新建但还没来得及保存的笔记也会被自动建档，不用怕忘了按保存就关掉。
 
 ### 导出
 
@@ -247,6 +273,7 @@ App 的窗口其实是个 WKWebView，前后端通过本机 HTTP 通信。这些
 | GET | `/api/notebook/<id>/export?fmt=md\|enex` | 导出整本 |
 | POST | `/api/convert` | HTML ⇄ Markdown 互转 `{from:'html'\|'md', text}` |
 | POST | `/api/note/<id>/attach` | 上传附件 `{filename, data(base64)}`，返回 `assets/…` 地址 |
+| POST | `/api/note/<id>/detach` | 删除单个附件 `{url}`；没有其它笔记引用时连磁盘副本一起清理 |
 | POST | `/api/note` | 新建笔记 `{notebook_id,title,content_html,tags}` |
 | POST | `/api/notebook` | 新建笔记本 `{name}` |
 | POST | `/api/note/<id>` | 保存笔记 |
